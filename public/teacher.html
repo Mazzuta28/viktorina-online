@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Учитель — Викторина</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<main class="container">
+  <div class="topbar">
+    <a href="/" class="brand" style="text-decoration:none">← Викторина</a>
+    <div class="hstack">
+      <button id="exportBtn" class="btn">Скачать копию</button>
+      <button id="importBtn" class="btn">Загрузить копию</button>
+      <input id="importFile" type="file" accept="application/json,.json" class="hidden" />
+      <button id="newQuizBtn" class="btn primary">+ Новая викторина</button>
+    </div>
+  </div>
+
+  <section id="listView" class="card">
+    <div class="hstack space"><div><h1 style="margin:0">Мои викторины</h1><div class="muted">Сначала создайте викторину, затем запустите её на уроке.</div></div></div>
+    <div id="quizList" class="grid" style="margin-top:18px"></div>
+  </section>
+
+  <section id="editorView" class="card hidden">
+    <div class="hstack space"><div><h1 id="editorTitle" style="margin:0">Новая викторина</h1><div class="muted">Вопросы можно добавлять в любом порядке — ученикам они всё равно будут перемешаны.</div></div><button id="backBtn" class="btn">Назад</button></div>
+    <div class="field" style="margin-top:18px"><label>Название викторины</label><input id="quizTitle" placeholder="Например: Квадратные уравнения" /></div>
+    <div id="questions"></div>
+    <div class="hstack">
+      <button id="addChoiceBtn" class="btn">+ Выбери правильный ответ</button>
+      <button id="addNumberBtn" class="btn">+ Введи число</button>
+      <button id="saveBtn" class="btn primary">Сохранить викторину</button>
+    </div>
+    <div id="editorMessage" style="margin-top:12px"></div>
+  </section>
+
+  <section id="roomView" class="card hidden">
+    <div class="hstack space"><div><h1 id="roomQuizTitle" style="margin:0"></h1><div class="muted">Ученики открывают страницу ученика и вводят этот код.</div></div><button id="closeRoomBtn" class="btn danger">Завершить викторину</button></div>
+    <div class="room-code" id="roomCode"></div>
+    <div class="notice" id="studentUrl"></div>
+    <h2>Рейтинг</h2>
+    <div class="muted" style="margin:-8px 0 10px">Места обновляются после каждого ответа.</div>
+    <div class="table-wrap"><table><thead><tr><th>Место</th><th>Ученик</th><th>Очки</th><th>Верно</th><th>Прогресс</th><th>Статус</th></tr></thead><tbody id="participants"></tbody></table></div>
+    <div id="emptyParticipants" class="muted">Пока никто не подключился.</div>
+  </section>
+</main>
+<script>
+const qs = (s) => document.querySelector(s);
+const listView = qs('#listView'), editorView = qs('#editorView'), roomView = qs('#roomView');
+const STORAGE_KEY = 'viktorina_online_quizzes_v2';
+let editingId = null;
+let roomCode = null;
+let eventSource = null;
+let teacherToken = null;
+let heartbeatTimer = null;
+
+function show(view) {
+  [listView, editorView, roomView].forEach(v => v.classList.add('hidden'));
+  view.classList.remove('hidden');
+}
+function esc(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function uid(prefix=''){ return prefix + Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function getQuizzes(){
+  try { const x=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); return Array.isArray(x)?x:[]; }
+  catch { return []; }
+}
+function setQuizzes(items){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+
+function loadList() {
+  const quizzes = getQuizzes();
+  const root = qs('#quizList'); root.innerHTML = '';
+  if (!quizzes.length) root.innerHTML = '<div class="muted">Викторин пока нет.</div>';
+  quizzes.forEach(q => {
+    const el = document.createElement('div'); el.className = 'quiz-item';
+    el.innerHTML = `<div><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Запустить</button><button class="btn small danger del">Удалить</button></div>`;
+    el.querySelector('.edit').onclick = () => editQuiz(q.id);
+    el.querySelector('.start').onclick = () => startRoom(q.id);
+    el.querySelector('.del').onclick = () => { if (confirm('Удалить викторину?')) { setQuizzes(getQuizzes().filter(x=>x.id!==q.id)); loadList(); } };
+    root.appendChild(el);
+  });
+}
+
+function blankChoice() { return { type:'choice', text:'', options:['','','',''], correctIndex:0 }; }
+function blankNumber() { return { type:'number', text:'', correctAnswer:'' }; }
+
+function renderQuestions(data) {
+  const root = qs('#questions'); root.innerHTML = '';
+  data.forEach((q, idx) => root.appendChild(questionEditor(q, idx)));
+}
+
+function questionEditor(q, idx) {
+  const wrap = document.createElement('div'); wrap.className='question-editor'; wrap.dataset.type=q.type; wrap.dataset.id=q.id||'';
+  const typeLabel = q.type === 'choice' ? 'Выбери правильный ответ' : 'Введи число';
+  wrap.innerHTML = `<div class="hstack space"><strong>№ ${idx+1}. ${typeLabel}</strong><button class="btn small danger remove">Удалить</button></div><div class="field"><label>Вопрос</label><textarea class="qtext" placeholder="Текст задания">${esc(q.text||'')}</textarea></div>`;
+  wrap.querySelector('.remove').onclick = () => { wrap.remove(); renumberEditors(); };
+  if (q.type === 'choice') {
+    const box = document.createElement('div'); box.className='options';
+    (q.options||['','']).forEach((opt, oi) => box.appendChild(optionRow(opt, oi, Number(q.correctIndex)===oi)));
+    const add = document.createElement('button'); add.type='button'; add.className='btn small'; add.textContent='+ Вариант ответа';
+    add.onclick = () => box.insertBefore(optionRow('', box.querySelectorAll('.option-row').length, false), add);
+    box.appendChild(add); wrap.appendChild(box);
+  } else {
+    const field = document.createElement('div'); field.className='field'; field.innerHTML=`<label>Правильный числовой ответ</label><input class="correct-number" inputmode="decimal" placeholder="Например: 12 или 3,5" value="${esc(q.correctAnswer ?? '')}" />`;
+    wrap.appendChild(field);
+  }
+  return wrap;
+}
+function optionRow(text, index, checked) {
+  const row = document.createElement('div'); row.className='option-row';
+  const radio = document.createElement('input'); radio.type='radio'; radio.name='correct_'+Math.random().toString(36).slice(2); radio.checked=checked;
+  const input = document.createElement('input'); input.className='option-text'; input.placeholder='Вариант ответа'; input.value=text;
+  const del = document.createElement('button'); del.type='button'; del.textContent='×'; del.onclick=()=>row.remove();
+  row.append(radio,input,del);
+  setTimeout(()=>syncRadioNames(row.closest('.question-editor')),0);
+  return row;
+}
+function syncRadioNames(editor) {
+  if (!editor) return;
+  const name='correct_'+[...document.querySelectorAll('.question-editor')].indexOf(editor);
+  editor.querySelectorAll('.option-row input[type=radio]').forEach(r=>r.name=name);
+}
+function renumberEditors() {
+  document.querySelectorAll('.question-editor').forEach((e,i)=>{
+    const strong=e.querySelector('strong');
+    strong.textContent=`№ ${i+1}. ${e.dataset.type==='choice'?'Выбери правильный ответ':'Введи число'}`;
+    syncRadioNames(e);
+  });
+}
+
+qs('#exportBtn').onclick=()=>{
+  const data={version:2,exportedAt:new Date().toISOString(),quizzes:getQuizzes()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='viktoriny-backup.json'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+};
+qs('#importBtn').onclick=()=>qs('#importFile').click();
+qs('#importFile').onchange=async(e)=>{
+  const file=e.target.files?.[0]; if(!file)return;
+  try{
+    const data=JSON.parse(await file.text()); const incoming=Array.isArray(data)?data:data.quizzes;
+    if(!Array.isArray(incoming)) throw new Error();
+    if(!confirm(`Загрузить викторины из файла (${incoming.length})? Текущий список будет заменён.`))return;
+    setQuizzes(incoming); loadList(); alert('Резервная копия загружена.');
+  }catch{ alert('Не удалось прочитать файл резервной копии.'); }
+  e.target.value='';
+};
+
+qs('#newQuizBtn').onclick=()=>{ editingId=null; qs('#editorTitle').textContent='Новая викторина'; qs('#quizTitle').value=''; qs('#editorMessage').textContent=''; renderQuestions([blankChoice()]); show(editorView); };
+qs('#backBtn').onclick=()=>{ show(listView); loadList(); };
+qs('#addChoiceBtn').onclick=()=>{ qs('#questions').appendChild(questionEditor(blankChoice(),document.querySelectorAll('.question-editor').length)); renumberEditors(); };
+qs('#addNumberBtn').onclick=()=>{ qs('#questions').appendChild(questionEditor(blankNumber(),document.querySelectorAll('.question-editor').length)); renumberEditors(); };
+
+function editQuiz(id) {
+  const q=getQuizzes().find(x=>x.id===id);
+  if(!q) return alert('Викторина не найдена');
+  editingId=id; qs('#editorTitle').textContent='Редактирование'; qs('#quizTitle').value=q.title; qs('#editorMessage').textContent=''; renderQuestions(q.questions); show(editorView);
+}
+function collectQuestions() {
+  return [...document.querySelectorAll('.question-editor')].map(editor=>{
+    const base={ id:editor.dataset.id||uid('q_'), type:editor.dataset.type, text:editor.querySelector('.qtext').value.trim() };
+    if (base.type==='choice') {
+      const rows=[...editor.querySelectorAll('.option-row')];
+      base.options=rows.map(r=>r.querySelector('.option-text').value.trim());
+      base.correctIndex=rows.findIndex(r=>r.querySelector('input[type=radio]').checked);
+    } else base.correctAnswer=editor.querySelector('.correct-number').value.trim();
+    return base;
+  });
+}
+function validateQuiz(payload){
+  if(!payload.title) return 'Введите название викторины';
+  if(!payload.questions.length) return 'Добавьте хотя бы один вопрос';
+  for(let i=0;i<payload.questions.length;i++){
+    const q=payload.questions[i];
+    if(!q.text) return `Заполните текст вопроса № ${i+1}`;
+    if(q.type==='choice'){
+      if(q.options.length<2 || q.options.some(x=>!x)) return `Заполните все варианты ответа в вопросе № ${i+1}`;
+      if(q.correctIndex<0) return `Отметьте правильный ответ в вопросе № ${i+1}`;
+    }else{
+      const s=String(q.correctAnswer).trim().replace(',','.');
+      if(!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(s)) return `В вопросе № ${i+1} нужен целый или конечный десятичный ответ`;
+    }
+  }
+  return '';
+}
+qs('#saveBtn').onclick=()=>{
+  const payload={ id:editingId||uid('quiz_'), title:qs('#quizTitle').value.trim(), questions:collectQuestions(), updatedAt:new Date().toISOString() };
+  const err=validateQuiz(payload); const m=qs('#editorMessage');
+  if(err){m.className='error';m.textContent=err;return;}
+  const all=getQuizzes(); const i=all.findIndex(x=>x.id===payload.id); if(i>=0)all[i]=payload;else all.push(payload); setQuizzes(all);
+  editingId=payload.id; m.className='notice';m.textContent='Сохранено в браузере этого компьютера'; setTimeout(()=>{show(listView);loadList();},500);
+};
+
+async function startRoom(quizId) {
+  const quiz=getQuizzes().find(x=>x.id===quizId); if(!quiz) return alert('Викторина не найдена');
+  const r=await fetch('/api/rooms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({quiz})}); const data=await r.json();
+  if(!r.ok) return alert(data.error||'Не удалось запустить');
+  roomCode=data.code; teacherToken=data.teacherToken; qs('#roomCode').textContent=roomCode; qs('#roomQuizTitle').textContent=data.quizTitle;
+  const direct=`${location.origin}/student?code=${roomCode}`;
+  qs('#studentUrl').innerHTML=`Адрес для учеников: <strong>${esc(location.origin+'/student')}</strong><br>Можно также отправить прямую ссылку с уже заполненным кодом: <strong>${esc(direct)}</strong>`;
+  show(roomView);
+  if(eventSource) eventSource.close();
+  eventSource=new EventSource(`/api/rooms/${roomCode}/events?token=${encodeURIComponent(teacherToken)}`);
+  eventSource.onmessage=(e)=>renderTeacherState(JSON.parse(e.data));
+  eventSource.onerror=()=>{};
+  clearInterval(heartbeatTimer);
+  heartbeatTimer=setInterval(()=>{ if(roomCode) fetch(`/api/rooms/${roomCode}/status`).catch(()=>{}); }, 60000);
+}
+function renderTeacherState(state) {
+  const body=qs('#participants'); body.innerHTML='';
+  qs('#emptyParticipants').classList.toggle('hidden',state.participants.length>0);
+  state.participants.forEach(p=>{
+    const tr=document.createElement('tr');
+    const place=p.rank===1?'🥇 1':p.rank===2?'🥈 2':p.rank===3?'🥉 3':String(p.rank);
+    tr.innerHTML=`<td><strong>${place}</strong></td><td><strong>${esc(p.name)}</strong></td><td><strong>${Number(p.score||0).toLocaleString('ru-RU')}</strong></td><td>${p.correct}/${p.total}</td><td>${p.answered}/${p.total}</td><td>${p.finished?'<span class="badge ok">Готово</span>':'<span class="badge">Решает</span>'}</td>`;
+    body.appendChild(tr);
+  });
+}
+qs('#closeRoomBtn').onclick=()=>{
+  if(!roomCode)return; if(!confirm('Завершить викторину для всех учеников?'))return;
+  fetch(`/api/rooms/${roomCode}/close`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
+  eventSource?.close(); eventSource=null; clearInterval(heartbeatTimer); heartbeatTimer=null; roomCode=null; teacherToken=null; show(listView); loadList();
+};
+loadList();
+</script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Как запустить викторину через интернет</title>
+<style>
+body{font-family:Arial,sans-serif;line-height:1.55;margin:0;background:#f6f7fb;color:#20242c}.wrap{max-width:900px;margin:auto;padding:30px 20px 60px}.card{background:white;border-radius:16px;padding:24px;margin:18px 0;box-shadow:0 4px 18px #00000010}h1{font-size:34px}h2{margin-top:0;color:#b75b00}code{background:#f1f2f5;padding:3px 7px;border-radius:6px}.ok{background:#fff4da;border-left:5px solid #f0a000;padding:14px 16px;border-radius:8px}.warn{background:#fff0f0;border-left:5px solid #d94848;padding:14px 16px;border-radius:8px}li{margin:8px 0}.big{font-size:19px}.step{font-weight:700;color:#b75b00}.url{word-break:break-all;font-family:monospace;background:#f1f2f5;padding:8px;border-radius:8px;display:inline-block}</style>
+</head>
+<body><div class="wrap">
+<h1>Подробная инструкция: викторина через интернет</h1>
+<p class="big">Эту настройку нужно сделать один раз. После публикации у викторины будет постоянный интернет-адрес. Учитель открывает кабинет с компьютера, а ученики подключаются с телефонов — они могут быть в другой Wi‑Fi сети или использовать мобильный интернет.</p>
+
+<div class="card"><h2>Часть 1. Что нужно подготовить один раз</h2>
+<ol>
+<li>Скачайте архив <b>viktorina-online.zip</b> и распакуйте его в обычную папку.</li>
+<li>Создайте бесплатный аккаунт на GitHub: <span class="url">https://github.com</span>.</li>
+<li>Создайте аккаунт на Render: <span class="url">https://render.com</span>. Удобнее войти через GitHub.</li>
+<li>Node.js на школьный компьютер для интернет-версии устанавливать не обязательно: программа будет работать на сервере Render.</li>
+</ol></div>
+
+<div class="card"><h2>Часть 2. Загрузить проект на GitHub</h2>
+<ol>
+<li>Войдите на GitHub.</li>
+<li>Нажмите <b>New repository</b>.</li>
+<li>В поле имени напишите, например, <code>viktorina-online</code>.</li>
+<li>Можно выбрать <b>Private</b> или <b>Public</b>. Если выбрали Private, при подключении Render нужно дать ему доступ к этому репозиторию.</li>
+<li>Нажмите <b>Create repository</b>.</li>
+<li>На странице нового репозитория выберите <b>uploading an existing file</b> или <b>Add file → Upload files</b>.</li>
+<li>Откройте распакованную папку <b>viktorina-online</b> на компьютере и перетащите в окно GitHub всё её содержимое: <code>public</code>, <code>server.js</code>, <code>package.json</code>, <code>render.yaml</code> и остальные файлы.</li>
+<li>Внизу нажмите <b>Commit changes</b>.</li>
+</ol>
+<div class="ok"><b>Результат:</b> на странице GitHub должны быть видны папка <code>public</code> и файлы <code>server.js</code>, <code>package.json</code>, <code>render.yaml</code>.</div>
+</div>
+
+<div class="card"><h2>Часть 3. Опубликовать сайт на Render</h2>
+<ol>
+<li>Откройте Render и войдите в аккаунт.</li>
+<li>Нажмите <b>New → Web Service</b>.</li>
+<li>Подключите GitHub, если Render попросит разрешение.</li>
+<li>Выберите репозиторий <b>viktorina-online</b> и нажмите <b>Connect</b>.</li>
+<li>В поле <b>Name</b> оставьте предложенное имя или напишите своё, например <code>verno-viktorina</code>.</li>
+<li><b>Language / Runtime:</b> Node.</li>
+<li><b>Build Command:</b> <code>npm install</code>.</li>
+<li><b>Start Command:</b> <code>npm start</code>.</li>
+<li>Для первого теста можно выбрать план <b>Free</b>.</li>
+<li>Нажмите <b>Create Web Service</b>.</li>
+<li>Когда развёртывание закончится, Render покажет интернет-адрес вида <span class="url">https://verno-viktorina.onrender.com</span>.</li>
+</ol>
+<div class="ok">Этот адрес и есть ваш сайт. Его не нужно запускать файлом .bat на каждом уроке.</div>
+</div>
+
+<div class="card"><h2>Часть 4. Что делает учитель до урока</h2>
+<ol>
+<li>На компьютере учителя откройте ваш адрес и добавьте в конце <code>/teacher</code>, например:<br><span class="url">https://verno-viktorina.onrender.com/teacher</span></li>
+<li>Нажмите <b>+ Новая викторина</b>.</li>
+<li>Введите название.</li>
+<li>Добавляйте вопросы двух типов:<br><b>Выбери правильный ответ</b> — укажите варианты и отметьте правильный;<br><b>Введи число</b> — укажите правильное число.</li>
+<li>Нажмите <b>Сохранить викторину</b>.</li>
+<li>Подготовленные викторины остаются в этом браузере и будут видны при следующем открытии страницы.</li>
+<li>После подготовки нажмите <b>Скачать копию</b> и сохраните файл <code>viktoriny-backup.json</code> в надёжное место.</li>
+</ol>
+<div class="warn"><b>Важно:</b> не готовьте викторины в режиме «Инкогнито». Если очистить данные браузера, локально сохранённые викторины исчезнут. Их можно восстановить кнопкой <b>Загрузить копию</b>.</div>
+</div>
+
+<div class="card"><h2>Часть 5. Как провести викторину на уроке</h2>
+<ol>
+<li>За несколько минут до урока откройте страницу учителя. На бесплатном Render после долгого простоя первый запуск может быть не мгновенным.</li>
+<li>В списке найдите нужную викторину.</li>
+<li>Нажмите <b>Запустить</b>.</li>
+<li>На экране появится большой <b>6-значный код</b>, например <code>527314</code>.</li>
+<li>На экране учителя также появится адрес для учеников.</li>
+<li>Напишите на доске или отправьте ученикам адрес:<br><span class="url">https://verno-viktorina.onrender.com/student</span></li>
+<li>Ученики открывают этот адрес на телефоне, вводят код и своё имя.</li>
+<li>Можно отправить и прямую ссылку вида:<br><span class="url">https://verno-viktorina.onrender.com/student?code=527314</span><br>Тогда код уже будет введён автоматически.</li>
+<li>Учитель видит подключившихся учеников, их прогресс и количество правильных ответов в реальном времени.</li>
+<li>В конце нажмите <b>Завершить викторину</b>.</li>
+</ol></div>
+
+<div class="card"><h2>Часть 6. Что видит ученик</h2>
+<ol>
+<li>Поле для кода викторины.</li>
+<li>Поле для имени.</li>
+<li>После входа — вопросы по одному.</li>
+<li>Порядок вопросов у каждого ученика случайный.</li>
+<li>В заданиях с выбором правильного ответа сами варианты тоже перемешаны.</li>
+<li>После ответа сразу появляется сообщение <b>Верно</b> или <b>Неверно</b>.</li>
+<li>Для числового ответа разрешены целые и конечные десятичные дроби. Например, <code>3,5</code> и <code>3.5</code> распознаются как одно и то же число.</li>
+</ol></div>
+
+<div class="card"><h2>Часть 7. Если вы сменили компьютер</h2>
+<ol>
+<li>На старом компьютере откройте кабинет учителя и нажмите <b>Скачать копию</b>.</li>
+<li>Перенесите файл <code>viktoriny-backup.json</code> на новый компьютер.</li>
+<li>На новом компьютере откройте тот же интернет-адрес <code>/teacher</code>.</li>
+<li>Нажмите <b>Загрузить копию</b> и выберите файл.</li>
+<li>Все сохранённые викторины появятся в списке.</li>
+</ol></div>
+
+<div class="card"><h2>Часть 8. Особенность бесплатного Render</h2>
+<p>Бесплатный Web Service может переходить в спящий режим после периода без входящих запросов. Поэтому перед уроком откройте страницу учителя заранее и дождитесь её полной загрузки. Когда игровая комната открыта, программа периодически обращается к серверу, чтобы поддерживать активность.</p>
+<p>Для обычного тестирования и небольших уроков бесплатного варианта достаточно. Если сервис будет использоваться постоянно и критична максимальная стабильность, позже можно перевести этот же Web Service на платный план — код переделывать не нужно.</p>
+</div>
+
+<div class="card"><h2>Короткая памятка на каждый урок</h2>
+<ol class="big">
+<li>Открыть <b>ваш-сайт.onrender.com/teacher</b>.</li>
+<li>Нажать <b>Запустить</b> у нужной викторины.</li>
+<li>Озвучить ученикам 6-значный код.</li>
+<li>Ученики открывают <b>ваш-сайт.onrender.com/student</b>.</li>
+<li>Провести викторину.</li>
+<li>Нажать <b>Завершить викторину</b>.</li>
+</ol></div>
+
+</div></body></html>

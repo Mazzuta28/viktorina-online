@@ -1,0 +1,13 @@
+{
+  "name": "viktorina-online",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Онлайн-викторина для урока: учитель и ученики подключаются через интернет",
+  "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

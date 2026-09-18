@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Ученик — Викторина</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<main class="container">
+  <section id="joinView" class="card join-box">
+    <div class="brand">Викторина</div>
+    <h1>Подключиться</h1>
+    <div class="field"><label>Код викторины</label><input id="code" inputmode="numeric" maxlength="6" placeholder="6 цифр" style="font-size:26px;letter-spacing:.08em;text-align:center" /></div>
+    <div class="field"><label>Твоё имя</label><input id="name" maxlength="40" placeholder="Например: Маша" /></div>
+    <button id="joinBtn" class="btn primary" style="width:100%">Войти</button>
+    <div id="joinMessage" style="margin-top:12px"></div>
+  </section>
+
+  <section id="quizView" class="card hidden" style="width:min(760px,100%);margin:3vh auto 0">
+    <div class="hstack space"><div><div class="muted" id="quizTitle"></div><strong id="counter"></strong></div><div class="hstack"><div id="rank" class="badge">Место: —</div><div id="score" class="badge">0 очков</div></div></div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div id="questionText" class="student-question"></div>
+    <div id="answerArea"></div>
+    <div id="feedback"></div>
+  </section>
+
+  <section id="finishView" class="card join-box hidden" style="text-align:center">
+    <h1>Готово 🎉</h1>
+    <p id="finalText" style="font-size:20px"></p>
+    <div class="muted">Результат уже видит учитель.</div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+let code='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
+const initialCode=new URLSearchParams(location.search).get('code');
+if(initialCode && /^\d{6}$/.test(initialCode)) $('#code').value=initialCode;
+function show(el){[$('#joinView'),$('#quizView'),$('#finishView')].forEach(x=>x.classList.add('hidden'));el.classList.remove('hidden');}
+function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+$('#joinBtn').onclick=()=>{
+  code=$('#code').value.trim(); const name=$('#name').value.trim(); $('#joinMessage').textContent='';
+  if(!/^\d{6}$/.test(code)){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите 6-значный код'; return; }
+  if(!name){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
+  fetch(`/api/rooms/${code}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})})
+    .then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
+      if(!ok) throw new Error(data.error||'Не удалось подключиться');
+      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank||1; totalPlayers=data.totalPlayers||1; $('#quizTitle').textContent=data.quizTitle; show($('#quizView')); renderQuestion(); startStatusCheck();
+    }).catch(err=>{ $('#joinMessage').className='error'; $('#joinMessage').textContent=err.message; });
+};
+let statusTimer=null;
+function updatePlaceDisplay(){
+  $('#rank').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}`;
+  $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков';
+  if(finishedLocal) $('#finalText').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}. Правильных: ${correctCount} из ${questions.length}. Очки: ${Number(score).toLocaleString('ru-RU')}.`;
+}
+function startStatusCheck(){
+  clearInterval(statusTimer);
+  statusTimer=setInterval(async()=>{
+    try{
+      const suffix=participantId?`?participantId=${encodeURIComponent(participantId)}`:'';
+      const r=await fetch(`/api/rooms/${code}/status${suffix}`);
+      if(r.status===410){
+        clearInterval(statusTimer);
+        if(!finishedLocal){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';}
+        return;
+      }
+      if(r.ok && participantId){
+        const data=await r.json(); currentRank=data.rank||currentRank; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount; updatePlaceDisplay();
+      }
+    }catch{}
+  },2000);
+}
+function handleResult(result){
+  correctCount=result.correctCount; score=result.score||0; currentRank=result.rank||currentRank; totalPlayers=result.totalPlayers||totalPlayers;
+  const f=$('#feedback'); f.className='feedback '+(result.correct?'ok':'bad');
+  f.textContent=result.correct?`Верно! +${Number(result.pointsEarned||0).toLocaleString('ru-RU')} очков`:'Неверно';
+  $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков';
+  $('#rank').textContent=`Место: ${currentRank} из ${totalPlayers}`;
+  setTimeout(()=>{
+    if(result.finished){ finishedLocal=true; show($('#finishView')); updatePlaceDisplay(); }
+    else { current++; locked=false; renderQuestion(); }
+  },900);
+}
+function renderQuestion(){
+  const q=questions[current]; if(!q)return;
+  $('#counter').textContent=`Вопрос ${current+1} из ${questions.length}`; $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков'; $('#rank').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}`;
+  $('#progressBar').style.width=`${(current/questions.length)*100}%`; $('#questionText').textContent=q.text; $('#feedback').className=''; $('#feedback').textContent='';
+  const area=$('#answerArea'); area.innerHTML='';
+  if(q.type==='choice'){
+    const grid=document.createElement('div');grid.className='answer-grid';
+    q.options.forEach(opt=>{const b=document.createElement('button');b.className='answer-btn';b.innerHTML=esc(opt.text);b.onclick=()=>submit(q,opt.key);grid.appendChild(b);});area.appendChild(grid);
+  } else {
+    const input=document.createElement('input');input.inputMode='decimal';input.placeholder='Введите число';input.style.fontSize='24px';
+    const btn=document.createElement('button');btn.className='btn primary';btn.textContent='Ответить';btn.style.marginTop='12px';btn.style.width='100%';
+    btn.onclick=()=>submit(q,input.value); input.addEventListener('keydown',e=>{if(e.key==='Enter')submit(q,input.value)}); area.append(input,btn); setTimeout(()=>input.focus(),50);
+  }
+}
+async function submit(q,answer){
+  if(locked)return; locked=true;
+  try{
+    const r=await fetch(`/api/rooms/${code}/answer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({participantId,questionId:q.id,answer})});
+    const data=await r.json();
+    if(!r.ok){ locked=false; if(r.status===410){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';return;} const f=$('#feedback');f.className='feedback bad';f.textContent=data.error||'Ошибка';return; }
+    handleResult(data);
+  }catch{ locked=false; const f=$('#feedback');f.className='feedback bad';f.textContent='Нет связи с сервером'; }
+}
+</script>
+</body>
+</html>
