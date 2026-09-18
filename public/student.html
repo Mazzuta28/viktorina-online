@@ -11,7 +11,8 @@
   <section id="joinView" class="card join-box">
     <div class="brand">Викторина</div>
     <h1>Подключиться</h1>
-    <div class="field"><label>Код викторины</label><input id="code" inputmode="numeric" maxlength="6" placeholder="6 цифр" style="font-size:26px;letter-spacing:.08em;text-align:center" /></div>
+    <div class="field" id="codeField"><label>Код викторины</label><input id="code" inputmode="numeric" maxlength="6" placeholder="6 цифр" style="font-size:26px;letter-spacing:.08em;text-align:center" /></div>
+    <div id="quizLinkNotice" class="notice hidden" style="margin-bottom:14px"></div>
     <div class="field"><label>Твоё имя</label><input id="name" maxlength="40" placeholder="Например: Маша" /></div>
     <div class="field">
       <label>Выбери персонажа</label>
@@ -31,7 +32,7 @@
   </section>
 
   <section id="quizView" class="card hidden" style="width:min(760px,100%);margin:3vh auto 0">
-    <div class="hstack space"><div><div class="muted" id="quizTitle"></div><strong id="counter"></strong></div><div class="hstack"><div id="rank" class="badge">Место: —</div><div id="score" class="badge">0 очков</div></div></div>
+    <div class="hstack space"><div><div class="muted" id="quizTitle"></div><strong id="counter"></strong></div><div class="hstack"><div id="rank" class="badge">Место: —</div><div id="score" class="badge">Верных: 0</div></div></div>
     <div class="progress"><div id="progressBar"></div></div>
     <div id="questionText" class="student-question"></div>
     <div id="answerArea"></div>
@@ -49,9 +50,38 @@
 const $=s=>document.querySelector(s);
 const AVATARS=['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖'];
 let code='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
-let selectedAvatar=AVATARS[0], studentName='', quizStarted=false, roomStatus='lobby';
-const initialCode=new URLSearchParams(location.search).get('code');
+let selectedAvatar=AVATARS[0], studentName='', quizStarted=false, roomStatus='lobby', ratingVisible=true;
+const initialParams=new URLSearchParams(location.search);
+const initialCode=initialParams.get('code');
+const initialQuizId=initialParams.get('quiz');
 if(initialCode && /^\d{6}$/.test(initialCode)) $('#code').value=initialCode;
+if(initialQuizId){
+  $('#codeField').classList.add('hidden');
+  $('#quizLinkNotice').classList.remove('hidden');
+  $('#quizLinkNotice').textContent='Это постоянная ссылка на конкретную викторину. Ищу открытую комнату учителя…';
+}
+
+async function resolvePermanentQuizLink(){
+  if(!initialQuizId) return true;
+  const notice=$('#quizLinkNotice');
+  try{
+    const r=await fetch(`/api/quiz-room/${encodeURIComponent(initialQuizId)}`);
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok){
+      code=''; $('#code').value='';
+      notice.className='notice';
+      notice.textContent=data.error||'Учитель ещё не открыл эту викторину.';
+      return false;
+    }
+    code=data.code; $('#code').value=code;
+    notice.className='notice';
+    notice.innerHTML=`Викторина: <strong>${esc(data.quizTitle||'')}</strong>. Комната открыта.`;
+    return true;
+  }catch{
+    notice.className='error'; notice.textContent='Нет связи с сервером.'; return false;
+  }
+}
+if(initialQuizId){ resolvePermanentQuizLink(); setInterval(()=>{ if(!participantId) resolvePermanentQuizLink(); },3000); }
 
 function show(el){[$('#joinView'),$('#waitView'),$('#quizView'),$('#finishView')].forEach(x=>x.classList.add('hidden'));el.classList.remove('hidden');}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -67,14 +97,19 @@ function renderAvatarPicker(){
 }
 renderAvatarPicker();
 
-$('#joinBtn').onclick=()=>{
-  code=$('#code').value.trim(); studentName=$('#name').value.trim(); $('#joinMessage').textContent='';
+$('#joinBtn').onclick=async()=>{
+  $('#joinMessage').textContent='';
+  if(initialQuizId){
+    const found=await resolvePermanentQuizLink();
+    if(!found){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Учитель ещё не открыл лобби этой викторины.'; return; }
+  } else code=$('#code').value.trim();
+  studentName=$('#name').value.trim();
   if(!/^\d{6}$/.test(code)){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите 6-значный код'; return; }
   if(!studentName){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
   fetch(`/api/rooms/${code}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:studentName,avatar:selectedAvatar})})
     .then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
       if(!ok) throw new Error(data.error||'Не удалось подключиться');
-      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank||1; totalPlayers=data.totalPlayers||1; roomStatus=data.roomStatus||'lobby';
+      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank??null; totalPlayers=data.totalPlayers||1; roomStatus=data.roomStatus||'lobby'; ratingVisible=data.ratingVisible!==false;
       $('#quizTitle').textContent=data.quizTitle;
       $('#waitQuizTitle').textContent=data.quizTitle;
       $('#waitAvatar').textContent=selectedAvatar;
@@ -92,9 +127,13 @@ function beginQuiz(){
 
 let statusTimer=null;
 function updatePlaceDisplay(){
-  $('#rank').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}`;
-  $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков';
-  if(finishedLocal) $('#finalText').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}. Правильных: ${correctCount} из ${questions.length}. Очки: ${Number(score).toLocaleString('ru-RU')}.`;
+  $('#rank').classList.toggle('hidden',!ratingVisible);
+  $('#rank').textContent=currentRank ? `Место: ${currentRank} из ${totalPlayers||1}` : 'Место: —';
+  $('#score').textContent=`Верных: ${correctCount}`;
+  if(finishedLocal){
+    const place=ratingVisible && currentRank ? `Место: ${currentRank} из ${totalPlayers||1}. ` : '';
+    $('#finalText').textContent=`${place}Правильных: ${correctCount} из ${questions.length}.`;
+  }
 }
 function startStatusCheck(){
   clearInterval(statusTimer);
@@ -109,7 +148,7 @@ function startStatusCheck(){
       }
       if(r.ok && participantId){
         const data=await r.json();
-        roomStatus=data.status||roomStatus; currentRank=data.rank||currentRank; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount;
+        roomStatus=data.status||roomStatus; currentRank=data.rank??null; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount; ratingVisible=data.ratingVisible!==false;
         updatePlaceDisplay();
         if(roomStatus==='active' && !quizStarted && !finishedLocal) beginQuiz();
       }
@@ -119,9 +158,9 @@ function startStatusCheck(){
   statusTimer=setInterval(check,1200);
 }
 function handleResult(result){
-  correctCount=result.correctCount; score=result.score||0; currentRank=result.rank||currentRank; totalPlayers=result.totalPlayers||totalPlayers;
+  correctCount=result.correctCount; score=result.score||0; currentRank=result.rank??currentRank; totalPlayers=result.totalPlayers||totalPlayers; ratingVisible=result.ratingVisible!==false;
   const f=$('#feedback'); f.className='feedback '+(result.correct?'ok':'bad');
-  f.textContent=result.correct?`Верно! +${Number(result.pointsEarned||0).toLocaleString('ru-RU')} очков`:'Неверно';
+  f.textContent=result.correct?'Верно! Ты поднялся на одну ступеньку.':'Неверно. Позиция в рейтинге не повышается.';
   updatePlaceDisplay();
   setTimeout(()=>{
     if(result.finished){ finishedLocal=true; show($('#finishView')); updatePlaceDisplay(); }
@@ -131,7 +170,11 @@ function handleResult(result){
 function renderQuestion(){
   const q=questions[current]; if(!q)return;
   $('#counter').textContent=`Вопрос ${current+1} из ${questions.length}`; updatePlaceDisplay();
-  $('#progressBar').style.width=`${(current/questions.length)*100}%`; $('#questionText').textContent=q.text; $('#feedback').className=''; $('#feedback').textContent='';
+  $('#progressBar').style.width=`${(current/questions.length)*100}%`;
+  const qbox=$('#questionText'); qbox.innerHTML='';
+  if(q.imageData){ const img=document.createElement('img'); img.className='student-question-image'; img.src=q.imageData; img.alt='Изображение к вопросу'; qbox.appendChild(img); }
+  if(q.text){ const txt=document.createElement('div'); txt.className='student-question-text'; txt.textContent=q.text; qbox.appendChild(txt); }
+  $('#feedback').className=''; $('#feedback').textContent='';
   const area=$('#answerArea'); area.innerHTML='';
   if(q.type==='choice'){
     const grid=document.createElement('div');grid.className='answer-grid';

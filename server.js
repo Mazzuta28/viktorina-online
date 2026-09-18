@@ -21,7 +21,7 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.svg': 'image/svg+xml'
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml'
 };
 
 function json(res, status, data) {
@@ -37,7 +37,7 @@ async function readBody(req) {
   const chunks=[]; let size=0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1_000_000) throw new Error('too-large');
+    if (size > 15_000_000) throw new Error('too-large');
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -56,20 +56,29 @@ function numberValue(value){
   if(!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(s)) return null;
   const n=Number(s); return Number.isFinite(n)?n:null;
 }
+function cleanImageData(value){
+  if(!value) return '';
+  const data=String(value);
+  if(!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('Изображение в вопросе имеет неподдерживаемый формат');
+  if(data.length>1_500_000) throw new Error('Изображение слишком большое. Уменьшите его перед загрузкой');
+  return data;
+}
 function cleanQuiz(body){
   const title=String(body.title||'').trim(); const qs=Array.isArray(body.questions)?body.questions:[];
   if(!title || !qs.length) throw new Error('Нужно название и хотя бы один вопрос');
   const questions=qs.map(src=>{
-    const qtext=String(src.text||'').trim(); if(!qtext) throw new Error('Заполните текст каждого вопроса');
+    const qtext=String(src.text||'').trim();
+    const imageData=cleanImageData(src.imageData||'');
+    if(!qtext && !imageData) throw new Error('В каждом вопросе нужен текст или изображение');
     if(src.type==='choice'){
       const options=Array.isArray(src.options)?src.options.map(x=>String(x).trim()).filter(Boolean):[];
       if(options.length<2) throw new Error('В вопросе с выбором должно быть минимум 2 варианта');
       const ci=Number(src.correctIndex); if(!Number.isInteger(ci)||ci<0||ci>=options.length) throw new Error('Укажите правильный вариант ответа');
-      return {id:src.id||id('q_'),type:'choice',text:qtext,options,correctIndex:ci};
+      return {id:src.id||id('q_'),type:'choice',text:qtext,imageData,options,correctIndex:ci};
     }
     if(src.type==='number'){
       const n=numberValue(String(src.correctAnswer??'')); if(n===null) throw new Error('Числовой ответ должен быть целым числом или конечной десятичной дробью');
-      return {id:src.id||id('q_'),type:'number',text:qtext,correctAnswer:n};
+      return {id:src.id||id('q_'),type:'number',text:qtext,imageData,correctAnswer:n};
     }
     throw new Error('Неизвестный тип вопроса');
   });
@@ -78,8 +87,8 @@ function cleanQuiz(body){
 function makeStudentQuestions(room,p){
   return p.order.map((qi,pos)=>{
     const q=room.quiz.questions[qi];
-    if(q.type==='choice') return {id:q.id,number:pos+1,type:'choice',text:q.text,options:p.optionOrders[qi].map(oi=>({key:oi,text:q.options[oi]}))};
-    return {id:q.id,number:pos+1,type:'number',text:q.text};
+    if(q.type==='choice') return {id:q.id,number:pos+1,type:'choice',text:q.text,imageData:q.imageData||'',options:p.optionOrders[qi].map(oi=>({key:oi,text:q.options[oi]}))};
+    return {id:q.id,number:pos+1,type:'number',text:q.text,imageData:q.imageData||''};
   });
 }
 function leaderboard(room){
@@ -91,22 +100,21 @@ function leaderboard(room){
     answered:p.answers.length,
     total,
     correct:p.answers.filter(a=>a.correct).length,
-    score:p.score||0,
+    score:p.answers.filter(a=>a.correct).length*1000,
     finished:p.finished,
-    joinedAt:p.joinedAt,
-    totalResponseMs:p.totalResponseMs||0
+    joinedAt:p.joinedAt
   }));
   if(room.status==='active'){
-    items.sort((a,b)=>
-      b.score-a.score ||
-      b.correct-a.correct ||
-      a.totalResponseMs-b.totalResponseMs ||
-      a.joinedAt-b.joinedAt
-    );
-  } else {
-    items.sort((a,b)=>a.joinedAt-b.joinedAt);
+    items.sort((a,b)=>b.correct-a.correct || a.joinedAt-b.joinedAt || a.name.localeCompare(b.name,'ru'));
+    const levels=[...new Set(items.filter(x=>x.correct>0).map(x=>x.correct))].sort((a,b)=>b-a);
+    return items.map(p=>({
+      ...p,
+      rank:p.correct>0 ? levels.indexOf(p.correct)+1 : null,
+      awardEligible:p.correct>0
+    }));
   }
-  return items.map((p,index)=>({...p,rank:index+1}));
+  items.sort((a,b)=>a.joinedAt-b.joinedAt);
+  return items.map(p=>({...p,rank:null,awardEligible:false}));
 }
 function roomState(room){
   return {
@@ -115,18 +123,15 @@ function roomState(room){
     status:room.status,
     totalQuestions:room.quiz.questions.length,
     participantCount:room.participants.size,
+    ratingVisible:room.ratingVisible!==false,
     participants:leaderboard(room)
   };
 }
 function rankFor(room,participantId){
   const board=leaderboard(room); const item=board.find(x=>x.id===participantId);
-  return {rank:item?.rank||board.length||1,totalPlayers:board.length};
+  return {rank:item?.rank??null,totalPlayers:board.length,correct:item?.correct||0};
 }
-function pointsForAnswer(correct,responseMs){
-  if(!correct) return 0;
-  const speedBonus=Math.max(0,Math.round(500*(1-Math.min(responseMs,30000)/30000)));
-  return 1000+speedBonus;
-}
+function pointsForAnswer(correct){ return correct ? 1000 : 0; }
 function broadcast(room){
   const payload=`data: ${JSON.stringify(roomState(room))}\n\n`;
   for(const res of room.listeners){ try{res.write(payload);}catch{} }
@@ -153,6 +158,19 @@ const server=http.createServer(async(req,res)=>{
     }
     if(m && req.method==='DELETE'){writeQuizzes(readQuizzes().filter(x=>x.id!==m[1]));return json(res,200,{ok:true});}
 
+    // Постоянная ссылка каждой викторины ведёт на её текущую открытую комнату.
+    // Ссылка остаётся той же при каждом новом запуске, а 6-значный код комнаты может меняться.
+    m=pathname.match(/^\/api\/quiz-room\/([^/]+)$/);
+    if(m && req.method==='GET'){
+      const quizId=m[1];
+      const candidates=[...rooms.values()]
+        .filter(room=>room.status!=='closed' && room.quiz?.id===quizId)
+        .sort((a,b)=>b.createdAt-a.createdAt);
+      const room=candidates[0];
+      if(!room) return json(res,404,{error:'Учитель ещё не открыл эту викторину'});
+      return json(res,200,{code:room.code,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
+    }
+
     // Создание комнаты теперь создаёт ЛОББИ. Викторина начинается только после кнопки «Старт» у учителя.
     if(pathname==='/api/rooms' && req.method==='POST'){
       const body=await readBody(req);
@@ -163,8 +181,8 @@ const server=http.createServer(async(req,res)=>{
         if(!quiz) return json(res,404,{error:'Викторина не найдена'});
       } catch(e) { return json(res,400,{error:e.message}); }
       const c=code(),teacherToken=id('t_');
-      rooms.set(c,{code:c,teacherToken,quiz,status:'lobby',createdAt:Date.now(),startedAt:null,participants:new Map(),listeners:new Set()});
-      return json(res,200,{code:c,teacherToken,quizTitle:quiz.title,status:'lobby'});
+      rooms.set(c,{code:c,teacherToken,quiz,status:'lobby',ratingVisible:true,createdAt:Date.now(),startedAt:null,participants:new Map(),listeners:new Set()});
+      return json(res,200,{code:c,teacherToken,quizTitle:quiz.title,quizId:quiz.id,status:'lobby'});
     }
 
     m=pathname.match(/^\/api\/rooms\/(\d{6})$/);
@@ -203,7 +221,7 @@ const server=http.createServer(async(req,res)=>{
       const place=rankFor(room,p.id);
       return json(res,200,{
         participantId:p.id,quizTitle:room.quiz.title,questions:makeStudentQuestions(room,p),
-        roomStatus:room.status,rank:place.rank,totalPlayers:room.participants.size,avatar:p.avatar
+        roomStatus:room.status,rank:place.rank,totalPlayers:room.participants.size,avatar:p.avatar,ratingVisible:room.ratingVisible!==false
       });
     }
 
@@ -239,7 +257,7 @@ const server=http.createServer(async(req,res)=>{
       }
       const answeredAt=Date.now();
       const responseMs=Math.max(0,answeredAt-(p.questionStartedAt||answeredAt));
-      const pointsEarned=pointsForAnswer(correct,responseMs);
+      const pointsEarned=pointsForAnswer(correct);
       p.score=(p.score||0)+pointsEarned;
       p.totalResponseMs=(p.totalResponseMs||0)+responseMs;
       p.answers.push({questionId:q.id,answer,correct,points:pointsEarned,responseMs,at:answeredAt});
@@ -247,7 +265,7 @@ const server=http.createServer(async(req,res)=>{
       if(p.current>=p.order.length)p.finished=true; else p.questionStartedAt=answeredAt+900;
       const place=rankFor(room,p.id);
       broadcast(room);
-      return json(res,200,{correct,finished:p.finished,answered:p.answers.length,total:p.order.length,correctCount:p.answers.filter(a=>a.correct).length,pointsEarned,score:p.score,rank:place.rank,totalPlayers:place.totalPlayers});
+      return json(res,200,{correct,finished:p.finished,answered:p.answers.length,total:p.order.length,correctCount:p.answers.filter(a=>a.correct).length,pointsEarned,score:p.score,rank:place.rank,totalPlayers:place.totalPlayers,ratingVisible:room.ratingVisible!==false});
     }
 
     m=pathname.match(/^\/api\/rooms\/(\d{6})\/status$/);
@@ -258,12 +276,22 @@ const server=http.createServer(async(req,res)=>{
         const p=room.participants.get(participantId); if(!p)return json(res,404,{error:'Участник не найден'});
         const place=rankFor(room,p.id);
         return json(res,200,{
-          status:room.status,rank:place.rank,totalPlayers:place.totalPlayers,score:p.score||0,
+          status:room.status,rank:place.rank,totalPlayers:place.totalPlayers,score:p.answers.filter(a=>a.correct).length*1000,
+          ratingVisible:room.ratingVisible!==false,
           correct:p.answers.filter(a=>a.correct).length,answered:p.answers.length,total:room.quiz.questions.length,
           finished:p.finished,avatar:p.avatar,name:p.name
         });
       }
       return json(res,200,{status:room.status,participantCount:room.participants.size});
+    }
+
+    m=pathname.match(/^\/api\/rooms\/(\d{6})\/rating-visibility$/);
+    if(m && req.method==='POST'){
+      const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
+      const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
+      room.ratingVisible=Boolean(body.visible);
+      broadcast(room);
+      return json(res,200,{ok:true,ratingVisible:room.ratingVisible});
     }
 
     m=pathname.match(/^\/api\/rooms\/(\d{6})\/close$/);

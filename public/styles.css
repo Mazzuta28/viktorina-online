@@ -92,3 +92,17 @@ th { color: #6b7280; font-size: 13px; }
 .podium-step { min-height: 74px; border: 2px solid #f59e0b; border-bottom: 0; border-radius: 14px 14px 0 0; background: linear-gradient(180deg,#fef3c7 0%,#fde68a 100%); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; padding: 12px 5px 6px; transition: height .45s ease; }
 .podium-rank { font-size: 21px; font-weight: 900; }
 .podium-score { font-size: 12px; font-weight: 800; color: #92400e; }
+
+/* Изображения в вопросах */
+.question-image-tools { margin: -2px 0 16px; padding: 12px; border: 1px dashed #d1d5db; border-radius: 14px; background: #fafafa; }
+.question-image-preview-wrap { margin-top: 12px; }
+.question-image-preview { display: block; max-width: min(100%, 620px); max-height: 420px; object-fit: contain; border-radius: 12px; border: 1px solid #e5e7eb; background: #fff; }
+.student-question { display: grid; gap: 16px; }
+.student-question-image { display: block; width: auto; max-width: 100%; max-height: min(52vh, 520px); margin: 0 auto; object-fit: contain; border-radius: 14px; }
+.student-question-text { font: inherit; }
+
+/* Уникальные постоянные ссылки викторин */
+.quiz-main-info{min-width:0;flex:1}
+.quiz-link-row{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.quiz-link-text{font-size:12px;max-width:520px;overflow-wrap:anywhere;white-space:normal}
+.break-link{overflow-wrap:anywhere;word-break:break-word}

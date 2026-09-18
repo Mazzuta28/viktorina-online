@@ -43,6 +43,7 @@
       </div>
       <div class="hstack">
         <button id="startGameBtn" class="btn primary">▶ Старт</button>
+        <button id="ratingToggleBtn" class="btn">👁 Рейтинг: ВКЛ</button>
         <button id="closeRoomBtn" class="btn danger">Завершить викторину</button>
       </div>
     </div>
@@ -56,8 +57,9 @@
     </section>
 
     <section id="ratingBoard" class="hidden" style="margin-top:22px">
-      <div class="hstack space"><div><h2 style="margin:0">Рейтинг</h2><div class="muted">Высота ступени зависит от места ученика.</div></div><div id="activeCount" class="badge"></div></div>
-      <div class="podium-scroll"><div id="podium" class="podium-stage"></div></div>
+      <div class="hstack space"><div><h2 style="margin:0">Рейтинг</h2><div class="muted">Каждый правильный ответ поднимает ученика на одну ступень. Ошибка высоту не меняет.</div></div><div id="activeCount" class="badge"></div></div>
+      <div id="ratingHiddenNotice" class="notice hidden" style="margin-top:14px">Рейтинг скрыт учителем. Ученики тоже не видят своё место.</div>
+      <div id="podiumWrap" class="podium-scroll"><div id="podium" class="podium-stage"></div></div>
       <div id="emptyPodium" class="muted" style="margin-top:12px">Ученики ещё не подключились.</div>
     </section>
   </section>
@@ -79,8 +81,17 @@ function show(view) {
 function esc(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function uid(prefix=''){ return prefix + Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function getQuizzes(){
-  try { const x=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); return Array.isArray(x)?x:[]; }
-  catch { return []; }
+  try {
+    const x=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    if(!Array.isArray(x)) return [];
+    const seen=new Set(); let changed=false;
+    x.forEach(q=>{
+      if(!q.id || seen.has(q.id)){ q.id=uid('quiz_'); changed=true; }
+      seen.add(q.id);
+    });
+    if(changed) localStorage.setItem(STORAGE_KEY,JSON.stringify(x));
+    return x;
+  } catch { return []; }
 }
 function setQuizzes(items){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
 
@@ -90,9 +101,14 @@ function loadList() {
   if (!quizzes.length) root.innerHTML = '<div class="muted">Викторин пока нет.</div>';
   quizzes.forEach(q => {
     const el = document.createElement('div'); el.className = 'quiz-item';
-    el.innerHTML = `<div><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Открыть лобби</button><button class="btn small danger del">Удалить</button></div>`;
+    const permanentLink=`${location.origin}/student?quiz=${encodeURIComponent(q.id)}`;
+    el.innerHTML = `<div class="quiz-main-info"><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div><div class="quiz-link-row"><span class="muted">Постоянная ссылка:</span> <code class="quiz-link-text">${esc(permanentLink)}</code> <button class="btn small copy-link">Копировать ссылку</button></div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Открыть лобби</button><button class="btn small danger del">Удалить</button></div>`;
     el.querySelector('.edit').onclick = () => editQuiz(q.id);
     el.querySelector('.start').onclick = () => startRoom(q.id);
+    el.querySelector('.copy-link').onclick = async () => {
+      try { await navigator.clipboard.writeText(permanentLink); el.querySelector('.copy-link').textContent='Скопировано'; setTimeout(()=>el.querySelector('.copy-link').textContent='Копировать ссылку',1200); }
+      catch { prompt('Скопируйте ссылку:',permanentLink); }
+    };
     el.querySelector('.del').onclick = () => { if (confirm('Удалить викторину?')) { setQuizzes(getQuizzes().filter(x=>x.id!==q.id)); loadList(); } };
     root.appendChild(el);
   });
@@ -100,6 +116,48 @@ function loadList() {
 
 function blankChoice() { return { type:'choice', text:'', options:['','','',''], correctIndex:0 }; }
 function blankNumber() { return { type:'number', text:'', correctAnswer:'' }; }
+
+function loadImageFromFile(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img)};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Не удалось открыть изображение'))};
+    img.src=url;
+  });
+}
+function canvasData(img,maxSide,quality){
+  const scale=Math.min(1,maxSide/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height));
+  const w=Math.max(1,Math.round((img.naturalWidth||img.width)*scale));
+  const h=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
+  const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+  const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+  return canvas.toDataURL('image/webp',quality);
+}
+async function optimizeImage(file){
+  if(!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error('Поддерживаются PNG, JPG и WEBP');
+  const img=await loadImageFromFile(file);
+  let data=canvasData(img,1200,.88);
+  if(data.length>700000) data=canvasData(img,900,.78);
+  if(data.length>1000000) throw new Error('Изображение слишком большое');
+  return data;
+}
+function addImageControls(wrap,imageData=''){
+  wrap._imageData=imageData||'';
+  const box=document.createElement('div'); box.className='question-image-tools';
+  box.innerHTML=`<div class="hstack"><button type="button" class="btn small pick-image">🖼 Добавить/заменить изображение</button><button type="button" class="btn small danger remove-image">Удалить изображение</button><span class="muted image-status"></span></div><input type="file" class="question-image-input hidden" accept="image/png,image/jpeg,image/webp"><div class="question-image-preview-wrap hidden"><img class="question-image-preview" alt="Изображение вопроса"></div>`;
+  const input=box.querySelector('.question-image-input'), previewWrap=box.querySelector('.question-image-preview-wrap'), preview=box.querySelector('.question-image-preview'), status=box.querySelector('.image-status');
+  const refresh=()=>{ const has=!!wrap._imageData; previewWrap.classList.toggle('hidden',!has); box.querySelector('.remove-image').classList.toggle('hidden',!has); if(has) preview.src=wrap._imageData; else preview.removeAttribute('src'); };
+  box.querySelector('.pick-image').onclick=()=>input.click();
+  box.querySelector('.remove-image').onclick=()=>{wrap._imageData='';status.textContent='';refresh();};
+  input.onchange=async()=>{
+    const file=input.files?.[0]; if(!file)return;
+    status.textContent='Обработка изображения…';
+    try{wrap._imageData=await optimizeImage(file);status.textContent='Изображение добавлено';refresh();}
+    catch(e){status.textContent='';alert(e.message||'Не удалось добавить изображение');}
+    input.value='';
+  };
+  refresh(); wrap.appendChild(box);
+}
 
 function renderQuestions(data) {
   const root = qs('#questions'); root.innerHTML = '';
@@ -109,8 +167,9 @@ function renderQuestions(data) {
 function questionEditor(q, idx) {
   const wrap = document.createElement('div'); wrap.className='question-editor'; wrap.dataset.type=q.type; wrap.dataset.id=q.id||'';
   const typeLabel = q.type === 'choice' ? 'Выбери правильный ответ' : 'Введи число';
-  wrap.innerHTML = `<div class="hstack space"><strong>№ ${idx+1}. ${typeLabel}</strong><button class="btn small danger remove">Удалить</button></div><div class="field"><label>Вопрос</label><textarea class="qtext" placeholder="Текст задания">${esc(q.text||'')}</textarea></div>`;
+  wrap.innerHTML = `<div class="hstack space"><strong>№ ${idx+1}. ${typeLabel}</strong><button class="btn small danger remove">Удалить</button></div><div class="field"><label>Текст вопроса <span class="muted">(необязательно, если есть картинка)</span></label><textarea class="qtext" placeholder="Можно написать текст задания или оставить поле пустым и добавить изображение">${esc(q.text||'')}</textarea></div>`;
   wrap.querySelector('.remove').onclick = () => { wrap.remove(); renumberEditors(); };
+  addImageControls(wrap,q.imageData||'');
   if (q.type === 'choice') {
     const box = document.createElement('div'); box.className='options';
     (q.options||['','']).forEach((opt, oi) => box.appendChild(optionRow(opt, oi, Number(q.correctIndex)===oi)));
@@ -174,7 +233,7 @@ function editQuiz(id) {
 }
 function collectQuestions() {
   return [...document.querySelectorAll('.question-editor')].map(editor=>{
-    const base={ id:editor.dataset.id||uid('q_'), type:editor.dataset.type, text:editor.querySelector('.qtext').value.trim() };
+    const base={ id:editor.dataset.id||uid('q_'), type:editor.dataset.type, text:editor.querySelector('.qtext').value.trim(), imageData:editor._imageData||'' };
     if (base.type==='choice') {
       const rows=[...editor.querySelectorAll('.option-row')];
       base.options=rows.map(r=>r.querySelector('.option-text').value.trim());
@@ -188,7 +247,7 @@ function validateQuiz(payload){
   if(!payload.questions.length) return 'Добавьте хотя бы один вопрос';
   for(let i=0;i<payload.questions.length;i++){
     const q=payload.questions[i];
-    if(!q.text) return `Заполните текст вопроса № ${i+1}`;
+    if(!q.text && !q.imageData) return `В вопросе № ${i+1} нужен текст или изображение`;
     if(q.type==='choice'){
       if(q.options.length<2 || q.options.some(x=>!x)) return `Заполните все варианты ответа в вопросе № ${i+1}`;
       if(q.correctIndex<0) return `Отметьте правильный ответ в вопросе № ${i+1}`;
@@ -203,7 +262,9 @@ qs('#saveBtn').onclick=()=>{
   const payload={ id:editingId||uid('quiz_'), title:qs('#quizTitle').value.trim(), questions:collectQuestions(), updatedAt:new Date().toISOString() };
   const err=validateQuiz(payload); const m=qs('#editorMessage');
   if(err){m.className='error';m.textContent=err;return;}
-  const all=getQuizzes(); const i=all.findIndex(x=>x.id===payload.id); if(i>=0)all[i]=payload;else all.push(payload); setQuizzes(all);
+  const all=getQuizzes(); const i=all.findIndex(x=>x.id===payload.id); if(i>=0)all[i]=payload;else all.push(payload);
+  try{ setQuizzes(all); }
+  catch{ m.className='error';m.textContent='Не удалось сохранить: браузеру не хватает места. Попробуйте уменьшить количество или размер изображений.';return; }
   editingId=payload.id; m.className='notice';m.textContent='Сохранено в браузере этого компьютера'; setTimeout(()=>{show(listView);loadList();},500);
 };
 
@@ -212,8 +273,9 @@ async function startRoom(quizId) {
   const r=await fetch('/api/rooms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({quiz})}); const data=await r.json();
   if(!r.ok) return alert(data.error||'Не удалось запустить');
   roomCode=data.code; teacherToken=data.teacherToken; qs('#roomCode').textContent=roomCode; qs('#roomQuizTitle').textContent=data.quizTitle;
-  const direct=`${location.origin}/student?code=${roomCode}`;
-  qs('#studentUrl').innerHTML=`Адрес для учеников: <strong>${esc(location.origin+'/student')}</strong><br>Можно также отправить прямую ссылку с уже заполненным кодом: <strong>${esc(direct)}</strong>`;
+  const permanent=`${location.origin}/student?quiz=${encodeURIComponent(quiz.id)}`;
+  const byCode=`${location.origin}/student?code=${roomCode}`;
+  qs('#studentUrl').innerHTML=`<strong>Постоянная ссылка именно этой викторины:</strong><br><span class="break-link">${esc(permanent)}</span><br><br><span class="muted">Запасной вариант для текущего запуска:</span> <span class="break-link">${esc(byCode)}</span>`;
   show(roomView);
   if(eventSource) eventSource.close();
   eventSource=new EventSource(`/api/rooms/${roomCode}/events?token=${encodeURIComponent(teacherToken)}`);
@@ -224,9 +286,12 @@ async function startRoom(quizId) {
 }
 function renderTeacherState(state) {
   const lobby=state.status==='lobby';
+  const ratingVisible=state.ratingVisible!==false;
   qs('#startGameBtn').classList.toggle('hidden',!lobby);
   qs('#lobbyBoard').classList.toggle('hidden',!lobby);
   qs('#ratingBoard').classList.toggle('hidden',lobby);
+  qs('#ratingToggleBtn').textContent=ratingVisible?'👁 Рейтинг: ВКЛ':'🚫 Рейтинг: ВЫКЛ';
+  qs('#ratingToggleBtn').classList.toggle('danger',!ratingVisible);
   qs('#roomStatusText').textContent=lobby
     ? 'Лобби открыто. Ученики подключаются и ждут кнопку «Старт».'
     : 'Викторина идёт. Новые ученики всё ещё могут подключаться и сразу начинать.';
@@ -244,13 +309,18 @@ function renderTeacherState(state) {
   }
 
   qs('#activeCount').textContent=`Участников: ${state.participants.length}`;
+  qs('#ratingHiddenNotice').classList.toggle('hidden',ratingVisible);
+  qs('#podiumWrap').classList.toggle('hidden',!ratingVisible);
   const podium=qs('#podium'); podium.innerHTML='';
-  qs('#emptyPodium').classList.toggle('hidden',state.participants.length>0);
-  const count=Math.max(1,state.participants.length);
+  qs('#emptyPodium').classList.toggle('hidden',state.participants.length>0 || !ratingVisible);
+  if(!ratingVisible) return;
+
   state.participants.forEach(p=>{
-    const height=count===1 ? 190 : Math.round(220-((p.rank-1)/(count-1))*130);
+    const progress=Math.max(0,Math.min(1,p.correct/Math.max(1,p.total)));
+    const height=Math.round(72 + progress*235);
     const el=document.createElement('div'); el.className='podium-player';
-    const medal=p.rank===1?'🥇':p.rank===2?'🥈':p.rank===3?'🥉':'';
+    const medal=p.awardEligible && p.rank===1?'🥇':p.awardEligible && p.rank===2?'🥈':p.awardEligible && p.rank===3?'🥉':'';
+    const rankText=p.rank?`${medal} ${p.rank}`:'—';
     el.innerHTML=`
       <div class="podium-person">
         <div class="avatar-large">${esc(p.avatar||'🦊')}</div>
@@ -258,8 +328,8 @@ function renderTeacherState(state) {
         <div class="podium-stats">${p.answered}/${p.total} / ✓${p.correct}</div>
       </div>
       <div class="podium-step" style="height:${height}px">
-        <div class="podium-rank">${medal} ${p.rank}</div>
-        <div class="podium-score">${Number(p.score||0).toLocaleString('ru-RU')}</div>
+        <div class="podium-rank">${rankText}</div>
+        <div class="podium-score">Верных: ${p.correct}</div>
       </div>`;
     podium.appendChild(el);
   });
@@ -270,6 +340,14 @@ qs('#startGameBtn').onclick=async()=>{
   const r=await fetch(`/api/rooms/${roomCode}/start`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
   const data=await r.json().catch(()=>({}));
   if(!r.ok) alert(data.error||'Не удалось запустить викторину');
+};
+
+qs('#ratingToggleBtn').onclick=async()=>{
+  if(!roomCode||!teacherToken)return;
+  const currentlyOn=!qs('#ratingToggleBtn').classList.contains('danger');
+  const r=await fetch(`/api/rooms/${roomCode}/rating-visibility`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken,visible:!currentlyOn})});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) alert(data.error||'Не удалось изменить отображение рейтинга');
 };
 
 qs('#closeRoomBtn').onclick=()=>{
