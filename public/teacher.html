@@ -36,13 +36,30 @@
   </section>
 
   <section id="roomView" class="card hidden">
-    <div class="hstack space"><div><h1 id="roomQuizTitle" style="margin:0"></h1><div class="muted">Ученики открывают страницу ученика и вводят этот код.</div></div><button id="closeRoomBtn" class="btn danger">Завершить викторину</button></div>
+    <div class="hstack space">
+      <div>
+        <h1 id="roomQuizTitle" style="margin:0"></h1>
+        <div id="roomStatusText" class="muted">Лобби открыто. Ученики могут подключаться.</div>
+      </div>
+      <div class="hstack">
+        <button id="startGameBtn" class="btn primary">▶ Старт</button>
+        <button id="closeRoomBtn" class="btn danger">Завершить викторину</button>
+      </div>
+    </div>
     <div class="room-code" id="roomCode"></div>
     <div class="notice" id="studentUrl"></div>
-    <h2>Рейтинг</h2>
-    <div class="muted" style="margin:-8px 0 10px">Места обновляются после каждого ответа.</div>
-    <div class="table-wrap"><table><thead><tr><th>Место</th><th>Ученик</th><th>Очки</th><th>Верно</th><th>Прогресс</th><th>Статус</th></tr></thead><tbody id="participants"></tbody></table></div>
-    <div id="emptyParticipants" class="muted">Пока никто не подключился.</div>
+
+    <section id="lobbyBoard" style="margin-top:22px">
+      <div class="hstack space"><h2 style="margin:0">Подключились</h2><strong id="lobbyCount" class="badge">0</strong></div>
+      <div id="lobbyPlayers" class="lobby-players"></div>
+      <div id="emptyLobby" class="muted" style="margin-top:12px">Пока никто не подключился.</div>
+    </section>
+
+    <section id="ratingBoard" class="hidden" style="margin-top:22px">
+      <div class="hstack space"><div><h2 style="margin:0">Рейтинг</h2><div class="muted">Высота ступени зависит от места ученика.</div></div><div id="activeCount" class="badge"></div></div>
+      <div class="podium-scroll"><div id="podium" class="podium-stage"></div></div>
+      <div id="emptyPodium" class="muted" style="margin-top:12px">Ученики ещё не подключились.</div>
+    </section>
   </section>
 </main>
 <script>
@@ -73,7 +90,7 @@ function loadList() {
   if (!quizzes.length) root.innerHTML = '<div class="muted">Викторин пока нет.</div>';
   quizzes.forEach(q => {
     const el = document.createElement('div'); el.className = 'quiz-item';
-    el.innerHTML = `<div><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Запустить</button><button class="btn small danger del">Удалить</button></div>`;
+    el.innerHTML = `<div><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Открыть лобби</button><button class="btn small danger del">Удалить</button></div>`;
     el.querySelector('.edit').onclick = () => editQuiz(q.id);
     el.querySelector('.start').onclick = () => startRoom(q.id);
     el.querySelector('.del').onclick = () => { if (confirm('Удалить викторину?')) { setQuizzes(getQuizzes().filter(x=>x.id!==q.id)); loadList(); } };
@@ -206,15 +223,55 @@ async function startRoom(quizId) {
   heartbeatTimer=setInterval(()=>{ if(roomCode) fetch(`/api/rooms/${roomCode}/status`).catch(()=>{}); }, 60000);
 }
 function renderTeacherState(state) {
-  const body=qs('#participants'); body.innerHTML='';
-  qs('#emptyParticipants').classList.toggle('hidden',state.participants.length>0);
+  const lobby=state.status==='lobby';
+  qs('#startGameBtn').classList.toggle('hidden',!lobby);
+  qs('#lobbyBoard').classList.toggle('hidden',!lobby);
+  qs('#ratingBoard').classList.toggle('hidden',lobby);
+  qs('#roomStatusText').textContent=lobby
+    ? 'Лобби открыто. Ученики подключаются и ждут кнопку «Старт».'
+    : 'Викторина идёт. Новые ученики всё ещё могут подключаться и сразу начинать.';
+
+  if(lobby){
+    qs('#lobbyCount').textContent=String(state.participants.length);
+    const root=qs('#lobbyPlayers'); root.innerHTML='';
+    qs('#emptyLobby').classList.toggle('hidden',state.participants.length>0);
+    state.participants.forEach(p=>{
+      const el=document.createElement('div'); el.className='lobby-player';
+      el.innerHTML=`<div class="avatar-large">${esc(p.avatar||'🦊')}</div><strong>${esc(p.name)}</strong>`;
+      root.appendChild(el);
+    });
+    return;
+  }
+
+  qs('#activeCount').textContent=`Участников: ${state.participants.length}`;
+  const podium=qs('#podium'); podium.innerHTML='';
+  qs('#emptyPodium').classList.toggle('hidden',state.participants.length>0);
+  const count=Math.max(1,state.participants.length);
   state.participants.forEach(p=>{
-    const tr=document.createElement('tr');
-    const place=p.rank===1?'🥇 1':p.rank===2?'🥈 2':p.rank===3?'🥉 3':String(p.rank);
-    tr.innerHTML=`<td><strong>${place}</strong></td><td><strong>${esc(p.name)}</strong></td><td><strong>${Number(p.score||0).toLocaleString('ru-RU')}</strong></td><td>${p.correct}/${p.total}</td><td>${p.answered}/${p.total}</td><td>${p.finished?'<span class="badge ok">Готово</span>':'<span class="badge">Решает</span>'}</td>`;
-    body.appendChild(tr);
+    const height=count===1 ? 190 : Math.round(220-((p.rank-1)/(count-1))*130);
+    const el=document.createElement('div'); el.className='podium-player';
+    const medal=p.rank===1?'🥇':p.rank===2?'🥈':p.rank===3?'🥉':'';
+    el.innerHTML=`
+      <div class="podium-person">
+        <div class="avatar-large">${esc(p.avatar||'🦊')}</div>
+        <strong class="podium-name">${esc(p.name)}</strong>
+        <div class="podium-stats">${p.answered}/${p.total} / ✓${p.correct}</div>
+      </div>
+      <div class="podium-step" style="height:${height}px">
+        <div class="podium-rank">${medal} ${p.rank}</div>
+        <div class="podium-score">${Number(p.score||0).toLocaleString('ru-RU')}</div>
+      </div>`;
+    podium.appendChild(el);
   });
 }
+
+qs('#startGameBtn').onclick=async()=>{
+  if(!roomCode||!teacherToken)return;
+  const r=await fetch(`/api/rooms/${roomCode}/start`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) alert(data.error||'Не удалось запустить викторину');
+};
+
 qs('#closeRoomBtn').onclick=()=>{
   if(!roomCode)return; if(!confirm('Завершить викторину для всех учеников?'))return;
   fetch(`/api/rooms/${roomCode}/close`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});

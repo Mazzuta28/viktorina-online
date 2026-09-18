@@ -13,8 +13,21 @@
     <h1>Подключиться</h1>
     <div class="field"><label>Код викторины</label><input id="code" inputmode="numeric" maxlength="6" placeholder="6 цифр" style="font-size:26px;letter-spacing:.08em;text-align:center" /></div>
     <div class="field"><label>Твоё имя</label><input id="name" maxlength="40" placeholder="Например: Маша" /></div>
+    <div class="field">
+      <label>Выбери персонажа</label>
+      <div id="avatarPicker" class="avatar-picker"></div>
+    </div>
     <button id="joinBtn" class="btn primary" style="width:100%">Войти</button>
     <div id="joinMessage" style="margin-top:12px"></div>
+  </section>
+
+  <section id="waitView" class="card join-box hidden" style="text-align:center">
+    <div id="waitAvatar" class="waiting-avatar"></div>
+    <h1 id="waitName" style="margin-bottom:6px"></h1>
+    <div class="muted" id="waitQuizTitle"></div>
+    <div class="waiting-title">Ты подключился!</div>
+    <p class="muted">Ждём, когда учитель нажмёт «Старт».</p>
+    <div class="waiting-dots"><span></span><span></span><span></span></div>
   </section>
 
   <section id="quizView" class="card hidden" style="width:min(760px,100%);margin:3vh auto 0">
@@ -26,6 +39,7 @@
   </section>
 
   <section id="finishView" class="card join-box hidden" style="text-align:center">
+    <div id="finishAvatar" class="waiting-avatar"></div>
     <h1>Готово 🎉</h1>
     <p id="finalText" style="font-size:20px"></p>
     <div class="muted">Результат уже видит учитель.</div>
@@ -33,21 +47,49 @@
 </main>
 <script>
 const $=s=>document.querySelector(s);
+const AVATARS=['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖'];
 let code='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
+let selectedAvatar=AVATARS[0], studentName='', quizStarted=false, roomStatus='lobby';
 const initialCode=new URLSearchParams(location.search).get('code');
 if(initialCode && /^\d{6}$/.test(initialCode)) $('#code').value=initialCode;
-function show(el){[$('#joinView'),$('#quizView'),$('#finishView')].forEach(x=>x.classList.add('hidden'));el.classList.remove('hidden');}
+
+function show(el){[$('#joinView'),$('#waitView'),$('#quizView'),$('#finishView')].forEach(x=>x.classList.add('hidden'));el.classList.remove('hidden');}
 function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function renderAvatarPicker(){
+  const root=$('#avatarPicker');root.innerHTML='';
+  AVATARS.forEach((avatar,i)=>{
+    const b=document.createElement('button');
+    b.type='button';b.className='avatar-choice'+(i===0?' selected':'');b.textContent=avatar;b.setAttribute('aria-label',`Персонаж ${i+1}`);
+    b.onclick=()=>{selectedAvatar=avatar;root.querySelectorAll('.avatar-choice').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');};
+    root.appendChild(b);
+  });
+}
+renderAvatarPicker();
+
 $('#joinBtn').onclick=()=>{
-  code=$('#code').value.trim(); const name=$('#name').value.trim(); $('#joinMessage').textContent='';
+  code=$('#code').value.trim(); studentName=$('#name').value.trim(); $('#joinMessage').textContent='';
   if(!/^\d{6}$/.test(code)){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите 6-значный код'; return; }
-  if(!name){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
-  fetch(`/api/rooms/${code}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})})
+  if(!studentName){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
+  fetch(`/api/rooms/${code}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:studentName,avatar:selectedAvatar})})
     .then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
       if(!ok) throw new Error(data.error||'Не удалось подключиться');
-      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank||1; totalPlayers=data.totalPlayers||1; $('#quizTitle').textContent=data.quizTitle; show($('#quizView')); renderQuestion(); startStatusCheck();
+      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank||1; totalPlayers=data.totalPlayers||1; roomStatus=data.roomStatus||'lobby';
+      $('#quizTitle').textContent=data.quizTitle;
+      $('#waitQuizTitle').textContent=data.quizTitle;
+      $('#waitAvatar').textContent=selectedAvatar;
+      $('#finishAvatar').textContent=selectedAvatar;
+      $('#waitName').textContent=studentName;
+      startStatusCheck();
+      if(roomStatus==='active') beginQuiz(); else show($('#waitView'));
     }).catch(err=>{ $('#joinMessage').className='error'; $('#joinMessage').textContent=err.message; });
 };
+
+function beginQuiz(){
+  if(quizStarted||finishedLocal)return;
+  quizStarted=true; roomStatus='active'; show($('#quizView')); renderQuestion();
+}
+
 let statusTimer=null;
 function updatePlaceDisplay(){
   $('#rank').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}`;
@@ -56,7 +98,7 @@ function updatePlaceDisplay(){
 }
 function startStatusCheck(){
   clearInterval(statusTimer);
-  statusTimer=setInterval(async()=>{
+  const check=async()=>{
     try{
       const suffix=participantId?`?participantId=${encodeURIComponent(participantId)}`:'';
       const r=await fetch(`/api/rooms/${code}/status${suffix}`);
@@ -66,17 +108,21 @@ function startStatusCheck(){
         return;
       }
       if(r.ok && participantId){
-        const data=await r.json(); currentRank=data.rank||currentRank; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount; updatePlaceDisplay();
+        const data=await r.json();
+        roomStatus=data.status||roomStatus; currentRank=data.rank||currentRank; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount;
+        updatePlaceDisplay();
+        if(roomStatus==='active' && !quizStarted && !finishedLocal) beginQuiz();
       }
     }catch{}
-  },2000);
+  };
+  check();
+  statusTimer=setInterval(check,1200);
 }
 function handleResult(result){
   correctCount=result.correctCount; score=result.score||0; currentRank=result.rank||currentRank; totalPlayers=result.totalPlayers||totalPlayers;
   const f=$('#feedback'); f.className='feedback '+(result.correct?'ok':'bad');
   f.textContent=result.correct?`Верно! +${Number(result.pointsEarned||0).toLocaleString('ru-RU')} очков`:'Неверно';
-  $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков';
-  $('#rank').textContent=`Место: ${currentRank} из ${totalPlayers}`;
+  updatePlaceDisplay();
   setTimeout(()=>{
     if(result.finished){ finishedLocal=true; show($('#finishView')); updatePlaceDisplay(); }
     else { current++; locked=false; renderQuestion(); }
@@ -84,7 +130,7 @@ function handleResult(result){
 }
 function renderQuestion(){
   const q=questions[current]; if(!q)return;
-  $('#counter').textContent=`Вопрос ${current+1} из ${questions.length}`; $('#score').textContent=Number(score).toLocaleString('ru-RU')+' очков'; $('#rank').textContent=`Место: ${currentRank||1} из ${totalPlayers||1}`;
+  $('#counter').textContent=`Вопрос ${current+1} из ${questions.length}`; updatePlaceDisplay();
   $('#progressBar').style.width=`${(current/questions.length)*100}%`; $('#questionText').textContent=q.text; $('#feedback').className=''; $('#feedback').textContent='';
   const area=$('#answerArea'); area.innerHTML='';
   if(q.type==='choice'){
@@ -101,7 +147,12 @@ async function submit(q,answer){
   try{
     const r=await fetch(`/api/rooms/${code}/answer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({participantId,questionId:q.id,answer})});
     const data=await r.json();
-    if(!r.ok){ locked=false; if(r.status===410){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';return;} const f=$('#feedback');f.className='feedback bad';f.textContent=data.error||'Ошибка';return; }
+    if(!r.ok){
+      locked=false;
+      if(r.status===410){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';return;}
+      if(r.status===409 && data.error?.includes('не запустил')){quizStarted=false;show($('#waitView'));return;}
+      const f=$('#feedback');f.className='feedback bad';f.textContent=data.error||'Ошибка';return;
+    }
     handleResult(data);
   }catch{ locked=false; const f=$('#feedback');f.className='feedback bad';f.textContent='Нет связи с сервером'; }
 }

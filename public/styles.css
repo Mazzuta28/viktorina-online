@@ -63,3 +63,32 @@ th { color: #6b7280; font-size: 13px; }
 .hero { padding: 26px 0 8px; }
 .hero h1 { font-size: clamp(30px, 6vw, 52px); margin: 0 0 10px; }
 .hero p { font-size: 18px; color: #6b7280; max-width: 720px; }
+
+/* Лобби, персонажи и живой пьедестал */
+.avatar-picker { display: grid; grid-template-columns: repeat(6, 1fr); gap: 9px; }
+.avatar-choice { border: 2px solid #e5e7eb; background: white; border-radius: 16px; min-height: 58px; font-size: 30px; line-height: 1; padding: 8px; }
+.avatar-choice.selected { border-color: var(--accent); background: #fef3c7; box-shadow: 0 0 0 3px #fde68a66; transform: translateY(-1px); }
+@media (max-width: 520px) { .avatar-picker { grid-template-columns: repeat(4, 1fr); } }
+
+.waiting-avatar, .avatar-large { display: grid; place-items: center; }
+.waiting-avatar { width: 96px; height: 96px; margin: 0 auto 12px; border-radius: 28px; background: #fff7ed; border: 2px solid #fed7aa; font-size: 58px; }
+.waiting-title { font-size: 26px; font-weight: 900; margin-top: 22px; }
+.waiting-dots { display: flex; justify-content: center; gap: 8px; margin-top: 18px; }
+.waiting-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); animation: waitPulse 1.2s infinite ease-in-out; }
+.waiting-dots span:nth-child(2) { animation-delay: .18s; }
+.waiting-dots span:nth-child(3) { animation-delay: .36s; }
+@keyframes waitPulse { 0%,80%,100%{transform:scale(.7);opacity:.45} 40%{transform:scale(1.15);opacity:1} }
+
+.lobby-players { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+.lobby-player { width: 116px; min-height: 126px; border: 1px solid var(--line); border-radius: 18px; background: #fff; display: grid; justify-items: center; align-content: center; gap: 8px; padding: 12px 8px; text-align: center; }
+.avatar-large { width: 68px; height: 68px; border-radius: 20px; background: #fff7ed; border: 2px solid #fed7aa; font-size: 42px; }
+
+.podium-scroll { overflow-x: auto; overflow-y: hidden; padding: 22px 4px 6px; margin-top: 10px; }
+.podium-stage { min-width: max-content; height: 390px; display: flex; align-items: flex-end; gap: 12px; padding: 0 10px; border-bottom: 4px solid #d1d5db; }
+.podium-player { width: 118px; flex: 0 0 118px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; }
+.podium-person { display: grid; justify-items: center; gap: 5px; margin-bottom: 6px; min-height: 118px; text-align: center; }
+.podium-name { max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.podium-stats { font-size: 13px; font-weight: 800; color: #4b5563; background: #f3f4f6; border-radius: 999px; padding: 4px 8px; }
+.podium-step { min-height: 74px; border: 2px solid #f59e0b; border-bottom: 0; border-radius: 14px 14px 0 0; background: linear-gradient(180deg,#fef3c7 0%,#fde68a 100%); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; padding: 12px 5px 6px; transition: height .45s ease; }
+.podium-rank { font-size: 21px; font-weight: 900; }
+.podium-score { font-size: 12px; font-weight: 800; color: #92400e; }
