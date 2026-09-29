@@ -86,12 +86,11 @@ th { color: #6b7280; font-size: 13px; }
 .podium-scroll { overflow-x: auto; overflow-y: hidden; padding: 22px 4px 6px; margin-top: 10px; }
 .podium-stage { min-width: max-content; height: 390px; display: flex; align-items: flex-end; gap: 12px; padding: 0 10px; border-bottom: 4px solid #d1d5db; }
 .podium-player { width: 118px; flex: 0 0 118px; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; }
-.podium-person { display: grid; justify-items: center; gap: 5px; margin-bottom: 6px; min-height: 118px; text-align: center; }
+.podium-person { display: grid; justify-items: center; align-content: start; gap: 4px; margin-bottom: 0; height: 118px; text-align: center; overflow: hidden; }
 .podium-name { max-width: 108px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .podium-stats { font-size: 13px; font-weight: 800; color: #4b5563; background: #f3f4f6; border-radius: 999px; padding: 4px 8px; }
-.podium-step { min-height: 74px; border: 2px solid #f59e0b; border-bottom: 0; border-radius: 14px 14px 0 0; background: linear-gradient(180deg,#fef3c7 0%,#fde68a 100%); display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; padding: 12px 5px 6px; transition: height .45s ease; }
-.podium-rank { font-size: 21px; font-weight: 900; }
-.podium-score { font-size: 12px; font-weight: 800; color: #92400e; }
+.podium-step { min-height: 0; box-sizing: border-box; border: 2px solid #f59e0b; border-bottom: 0; border-radius: 14px 14px 0 0; background: linear-gradient(180deg,#fef3c7 0%,#fde68a 100%); overflow: hidden; padding: 0; transition: height .45s ease; }
+.podium-rank-inline { font-size: 14px; line-height: 1; font-weight: 900; color: #92400e; min-height: 14px; }
 
 /* Изображения в вопросах */
 .question-image-tools { margin: -2px 0 16px; padding: 12px; border: 1px dashed #d1d5db; border-radius: 14px; background: #fafafa; }
@@ -106,3 +105,27 @@ th { color: #6b7280; font-size: 13px; }
 .quiz-link-row{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .quiz-link-text{font-size:12px;max-width:520px;overflow-wrap:anywhere;white-space:normal}
 .break-link{overflow-wrap:anywhere;word-break:break-word}
+
+/* QR-коды викторин */
+.quiz-card-qr { display:grid; justify-items:center; gap:4px; flex:0 0 auto; }
+.quiz-card-qr img { width:112px; height:112px; display:block; background:#fff; border:1px solid var(--line); border-radius:12px; padding:5px; }
+.room-access { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:center; margin-top:16px; }
+.room-qr-box { display:grid; justify-items:center; gap:7px; text-align:center; }
+.room-qr { width:230px; height:230px; display:block; background:#fff; border:1px solid var(--line); border-radius:16px; padding:8px; }
+@media (max-width:760px){
+  .quiz-item { align-items:flex-start; flex-wrap:wrap; }
+  .quiz-card-qr img { width:96px; height:96px; }
+  .room-access { grid-template-columns:1fr; }
+  .room-qr { width:min(260px,80vw); height:auto; aspect-ratio:1; }
+}
+
+/* Тип вопроса «Составь предложение» */
+.sentence-editor-field textarea { min-height:150px; }
+.sentence-answer-zone { min-height:112px; border:2px dashed #f59e0b; border-radius:18px; background:#fffbeb; padding:12px; margin-bottom:14px; }
+.sentence-zone-label { font-size:13px; font-weight:800; color:#92400e; margin-bottom:8px; }
+.sentence-answer-tiles, .sentence-bank { display:flex; flex-wrap:wrap; gap:10px; min-height:52px; align-items:flex-start; }
+.sentence-bank { padding:14px 0; }
+.word-tile { border:2px solid #e5e7eb; background:#fff; border-radius:14px; padding:11px 14px; min-height:46px; font-weight:800; font-size:18px; }
+.word-tile.selected { border-color:#f59e0b; background:#fef3c7; }
+.sentence-actions { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; margin-top:6px; }
+.sentence-actions .btn { min-width:130px; }

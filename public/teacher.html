@@ -30,6 +30,7 @@
     <div class="hstack">
       <button id="addChoiceBtn" class="btn">+ Выбери правильный ответ</button>
       <button id="addNumberBtn" class="btn">+ Введи число</button>
+      <button id="addSentenceBtn" class="btn">+ Составь предложение</button>
       <button id="saveBtn" class="btn primary">Сохранить викторину</button>
     </div>
     <div id="editorMessage" style="margin-top:12px"></div>
@@ -47,8 +48,10 @@
         <button id="closeRoomBtn" class="btn danger">Завершить викторину</button>
       </div>
     </div>
-    <div class="room-code" id="roomCode"></div>
-    <div class="notice" id="studentUrl"></div>
+    <div class="room-access">
+      <div class="notice" id="studentUrl"></div>
+      <div class="room-qr-box"><img id="roomQr" class="room-qr" alt="QR-код для входа в викторину"><div class="muted">Ученики сканируют QR-код камерой телефона.</div></div>
+    </div>
 
     <section id="lobbyBoard" style="margin-top:22px">
       <div class="hstack space"><h2 style="margin:0">Подключились</h2><strong id="lobbyCount" class="badge">0</strong></div>
@@ -68,8 +71,10 @@
 const qs = (s) => document.querySelector(s);
 const listView = qs('#listView'), editorView = qs('#editorView'), roomView = qs('#roomView');
 const STORAGE_KEY = 'viktorina_online_quizzes_v2';
+const ORAL_SEED_KEY = 'viktorina_oral_seed_20260929_done';
+const BUILTIN_ORAL_QUIZ = {"id":"quiz_oral_photo_20260929","title":"Устный счёт","questions":[{"id":"oral_001","type":"number","text":"12 · 2","imageData":"","correctAnswer":24},{"id":"oral_002","type":"number","text":"12 · 3","imageData":"","correctAnswer":36},{"id":"oral_003","type":"number","text":"12 · 4","imageData":"","correctAnswer":48},{"id":"oral_004","type":"number","text":"13 · 2","imageData":"","correctAnswer":26},{"id":"oral_005","type":"number","text":"13 · 3","imageData":"","correctAnswer":39},{"id":"oral_006","type":"number","text":"13 · 4","imageData":"","correctAnswer":52},{"id":"oral_007","type":"number","text":"14 · 2","imageData":"","correctAnswer":28},{"id":"oral_008","type":"number","text":"14 · 3","imageData":"","correctAnswer":42},{"id":"oral_009","type":"number","text":"14 · 4","imageData":"","correctAnswer":56},{"id":"oral_010","type":"number","text":"15 · 2","imageData":"","correctAnswer":30},{"id":"oral_011","type":"number","text":"15 · 3","imageData":"","correctAnswer":45},{"id":"oral_012","type":"number","text":"15 · 4","imageData":"","correctAnswer":60},{"id":"oral_013","type":"number","text":"16 · 2","imageData":"","correctAnswer":32},{"id":"oral_014","type":"number","text":"16 · 3","imageData":"","correctAnswer":48},{"id":"oral_015","type":"number","text":"16 · 4","imageData":"","correctAnswer":64},{"id":"oral_016","type":"number","text":"17 · 2","imageData":"","correctAnswer":34},{"id":"oral_017","type":"number","text":"17 · 3","imageData":"","correctAnswer":51},{"id":"oral_018","type":"number","text":"17 · 4","imageData":"","correctAnswer":68},{"id":"oral_019","type":"number","text":"18 · 2","imageData":"","correctAnswer":36},{"id":"oral_020","type":"number","text":"18 · 3","imageData":"","correctAnswer":54},{"id":"oral_021","type":"number","text":"18 · 4","imageData":"","correctAnswer":72},{"id":"oral_022","type":"number","text":"19 · 2","imageData":"","correctAnswer":38},{"id":"oral_023","type":"number","text":"19 · 3","imageData":"","correctAnswer":57},{"id":"oral_024","type":"number","text":"19 · 4","imageData":"","correctAnswer":76},{"id":"oral_025","type":"number","text":"12 · 0,5","imageData":"","correctAnswer":6},{"id":"oral_026","type":"number","text":"14 · 0,5","imageData":"","correctAnswer":7},{"id":"oral_027","type":"number","text":"16 · 0,5","imageData":"","correctAnswer":8},{"id":"oral_028","type":"number","text":"18 · 0,5","imageData":"","correctAnswer":9},{"id":"oral_029","type":"number","text":"20 · 0,5","imageData":"","correctAnswer":10},{"id":"oral_030","type":"number","text":"22 · 0,5","imageData":"","correctAnswer":11},{"id":"oral_031","type":"number","text":"24 · 0,5","imageData":"","correctAnswer":12},{"id":"oral_032","type":"number","text":"26 · 0,5","imageData":"","correctAnswer":13},{"id":"oral_033","type":"number","text":"30 · 0,5","imageData":"","correctAnswer":15},{"id":"oral_034","type":"number","text":"2 : 5","imageData":"","correctAnswer":0.4},{"id":"oral_035","type":"number","text":"3 : 5","imageData":"","correctAnswer":0.6},{"id":"oral_036","type":"number","text":"1 : 5","imageData":"","correctAnswer":0.2},{"id":"oral_037","type":"number","text":"4 : 5","imageData":"","correctAnswer":0.8},{"id":"oral_038","type":"number","text":"6 : 5","imageData":"","correctAnswer":1.2},{"id":"oral_039","type":"number","text":"7 : 5","imageData":"","correctAnswer":1.4},{"id":"oral_040","type":"number","text":"8 : 5","imageData":"","correctAnswer":1.6},{"id":"oral_041","type":"number","text":"9 : 5","imageData":"","correctAnswer":1.8},{"id":"oral_042","type":"number","text":"11 : 5","imageData":"","correctAnswer":2.2},{"id":"oral_043","type":"number","text":"12 : 5","imageData":"","correctAnswer":2.4},{"id":"oral_044","type":"number","text":"13 : 5","imageData":"","correctAnswer":2.6},{"id":"oral_045","type":"number","text":"14 : 5","imageData":"","correctAnswer":2.8},{"id":"oral_046","type":"number","text":"2 · 1,5","imageData":"","correctAnswer":3},{"id":"oral_047","type":"number","text":"4 · 1,5","imageData":"","correctAnswer":6},{"id":"oral_048","type":"number","text":"6 · 1,5","imageData":"","correctAnswer":9},{"id":"oral_049","type":"number","text":"8 · 1,5","imageData":"","correctAnswer":12},{"id":"oral_050","type":"number","text":"10 · 1,5","imageData":"","correctAnswer":15},{"id":"oral_051","type":"number","text":"12 · 1,5","imageData":"","correctAnswer":18},{"id":"oral_052","type":"number","text":"14 · 1,5","imageData":"","correctAnswer":21},{"id":"oral_053","type":"number","text":"16 · 1,5","imageData":"","correctAnswer":24},{"id":"oral_054","type":"number","text":"18 · 1,5","imageData":"","correctAnswer":27},{"id":"oral_055","type":"number","text":"20 · 1,5","imageData":"","correctAnswer":30},{"id":"oral_056","type":"number","text":"22 · 1,5","imageData":"","correctAnswer":33},{"id":"oral_057","type":"number","text":"24 · 1,5","imageData":"","correctAnswer":36},{"id":"oral_058","type":"number","text":"26 · 1,5","imageData":"","correctAnswer":39}],"updatedAt":"2026-09-29T00:00:00.000Z"};
 let editingId = null;
-let roomCode = null;
+let roomId = null;
 let eventSource = null;
 let teacherToken = null;
 let heartbeatTimer = null;
@@ -94,6 +99,14 @@ function getQuizzes(){
   } catch { return []; }
 }
 function setQuizzes(items){ localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); }
+function ensureBuiltInQuizzes(){
+  if(localStorage.getItem(ORAL_SEED_KEY)==='1') return;
+  const items=getQuizzes();
+  if(!items.some(q=>q.id===BUILTIN_ORAL_QUIZ.id)) items.push(BUILTIN_ORAL_QUIZ);
+  setQuizzes(items);
+  localStorage.setItem(ORAL_SEED_KEY,'1');
+}
+function qrUrlFor(link){ return `/api/qr?text=${encodeURIComponent(link)}`; }
 
 function loadList() {
   const quizzes = getQuizzes();
@@ -102,7 +115,7 @@ function loadList() {
   quizzes.forEach(q => {
     const el = document.createElement('div'); el.className = 'quiz-item';
     const permanentLink=`${location.origin}/student?quiz=${encodeURIComponent(q.id)}`;
-    el.innerHTML = `<div class="quiz-main-info"><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div><div class="quiz-link-row"><span class="muted">Постоянная ссылка:</span> <code class="quiz-link-text">${esc(permanentLink)}</code> <button class="btn small copy-link">Копировать ссылку</button></div></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Открыть лобби</button><button class="btn small danger del">Удалить</button></div>`;
+    el.innerHTML = `<div class="quiz-main-info"><strong>${esc(q.title)}</strong><div class="muted">Вопросов: ${q.questions.length}</div><div class="quiz-link-row"><span class="muted">Постоянная ссылка:</span> <code class="quiz-link-text">${esc(permanentLink)}</code> <button class="btn small copy-link">Копировать ссылку</button></div></div><div class="quiz-card-qr"><img src="${qrUrlFor(permanentLink)}" alt="QR-код: ${esc(q.title)}"><span class="muted">QR для учеников</span></div><div class="hstack"><button class="btn small edit">Редактировать</button><button class="btn small primary start">Открыть лобби</button><button class="btn small danger del">Удалить</button></div>`;
     el.querySelector('.edit').onclick = () => editQuiz(q.id);
     el.querySelector('.start').onclick = () => startRoom(q.id);
     el.querySelector('.copy-link').onclick = async () => {
@@ -116,6 +129,7 @@ function loadList() {
 
 function blankChoice() { return { type:'choice', text:'', options:['','','',''], correctIndex:0 }; }
 function blankNumber() { return { type:'number', text:'', correctAnswer:'' }; }
+function blankSentence() { return { type:'sentence', text:'Составь верное утверждение', tokens:['','',''] }; }
 
 function loadImageFromFile(file){
   return new Promise((resolve,reject)=>{
@@ -166,7 +180,7 @@ function renderQuestions(data) {
 
 function questionEditor(q, idx) {
   const wrap = document.createElement('div'); wrap.className='question-editor'; wrap.dataset.type=q.type; wrap.dataset.id=q.id||'';
-  const typeLabel = q.type === 'choice' ? 'Выбери правильный ответ' : 'Введи число';
+  const typeLabel = q.type === 'choice' ? 'Выбери правильный ответ' : q.type === 'sentence' ? 'Составь предложение' : 'Введи число';
   wrap.innerHTML = `<div class="hstack space"><strong>№ ${idx+1}. ${typeLabel}</strong><button class="btn small danger remove">Удалить</button></div><div class="field"><label>Текст вопроса <span class="muted">(необязательно, если есть картинка)</span></label><textarea class="qtext" placeholder="Можно написать текст задания или оставить поле пустым и добавить изображение">${esc(q.text||'')}</textarea></div>`;
   wrap.querySelector('.remove').onclick = () => { wrap.remove(); renumberEditors(); };
   addImageControls(wrap,q.imageData||'');
@@ -176,6 +190,15 @@ function questionEditor(q, idx) {
     const add = document.createElement('button'); add.type='button'; add.className='btn small'; add.textContent='+ Вариант ответа';
     add.onclick = () => box.insertBefore(optionRow('', box.querySelectorAll('.option-row').length, false), add);
     box.appendChild(add); wrap.appendChild(box);
+  } else if(q.type === 'sentence') {
+    const field = document.createElement('div'); field.className='field sentence-editor-field';
+    field.innerHTML=`<label>Плашки в правильном порядке <span class="muted">(каждое слово или часть — с новой строки)</span></label><textarea class="sentence-tokens" placeholder="Например:
+Сумма
+углов
+треугольника
+равна
+180°">${esc((q.tokens||[]).join('\n'))}</textarea><div class="muted">Ученику эти плашки будут перемешаны. Он нажимает на них, и они переходят в поле ответа.</div>`;
+    wrap.appendChild(field);
   } else {
     const field = document.createElement('div'); field.className='field'; field.innerHTML=`<label>Правильный числовой ответ</label><input class="correct-number" inputmode="decimal" placeholder="Например: 12 или 3,5" value="${esc(q.correctAnswer ?? '')}" />`;
     wrap.appendChild(field);
@@ -199,7 +222,7 @@ function syncRadioNames(editor) {
 function renumberEditors() {
   document.querySelectorAll('.question-editor').forEach((e,i)=>{
     const strong=e.querySelector('strong');
-    strong.textContent=`№ ${i+1}. ${e.dataset.type==='choice'?'Выбери правильный ответ':'Введи число'}`;
+    strong.textContent=`№ ${i+1}. ${e.dataset.type==='choice'?'Выбери правильный ответ':e.dataset.type==='sentence'?'Составь предложение':'Введи число'}`;
     syncRadioNames(e);
   });
 }
@@ -225,6 +248,7 @@ qs('#newQuizBtn').onclick=()=>{ editingId=null; qs('#editorTitle').textContent='
 qs('#backBtn').onclick=()=>{ show(listView); loadList(); };
 qs('#addChoiceBtn').onclick=()=>{ qs('#questions').appendChild(questionEditor(blankChoice(),document.querySelectorAll('.question-editor').length)); renumberEditors(); };
 qs('#addNumberBtn').onclick=()=>{ qs('#questions').appendChild(questionEditor(blankNumber(),document.querySelectorAll('.question-editor').length)); renumberEditors(); };
+qs('#addSentenceBtn').onclick=()=>{ qs('#questions').appendChild(questionEditor(blankSentence(),document.querySelectorAll('.question-editor').length)); renumberEditors(); };
 
 function editQuiz(id) {
   const q=getQuizzes().find(x=>x.id===id);
@@ -238,6 +262,8 @@ function collectQuestions() {
       const rows=[...editor.querySelectorAll('.option-row')];
       base.options=rows.map(r=>r.querySelector('.option-text').value.trim());
       base.correctIndex=rows.findIndex(r=>r.querySelector('input[type=radio]').checked);
+    } else if(base.type==='sentence') {
+      base.tokens=editor.querySelector('.sentence-tokens').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
     } else base.correctAnswer=editor.querySelector('.correct-number').value.trim();
     return base;
   });
@@ -247,10 +273,12 @@ function validateQuiz(payload){
   if(!payload.questions.length) return 'Добавьте хотя бы один вопрос';
   for(let i=0;i<payload.questions.length;i++){
     const q=payload.questions[i];
-    if(!q.text && !q.imageData) return `В вопросе № ${i+1} нужен текст или изображение`;
+    if(q.type!=='sentence' && !q.text && !q.imageData) return `В вопросе № ${i+1} нужен текст или изображение`;
     if(q.type==='choice'){
       if(q.options.length<2 || q.options.some(x=>!x)) return `Заполните все варианты ответа в вопросе № ${i+1}`;
       if(q.correctIndex<0) return `Отметьте правильный ответ в вопросе № ${i+1}`;
+    }else if(q.type==='sentence'){
+      if(!Array.isArray(q.tokens) || q.tokens.length<2) return `В вопросе № ${i+1} нужно минимум 2 плашки`;
     }else{
       const s=String(q.correctAnswer).trim().replace(',','.');
       if(!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(s)) return `В вопросе № ${i+1} нужен целый или конечный десятичный ответ`;
@@ -272,17 +300,17 @@ async function startRoom(quizId) {
   const quiz=getQuizzes().find(x=>x.id===quizId); if(!quiz) return alert('Викторина не найдена');
   const r=await fetch('/api/rooms',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({quiz})}); const data=await r.json();
   if(!r.ok) return alert(data.error||'Не удалось запустить');
-  roomCode=data.code; teacherToken=data.teacherToken; qs('#roomCode').textContent=roomCode; qs('#roomQuizTitle').textContent=data.quizTitle;
+  roomId=data.roomId; teacherToken=data.teacherToken; qs('#roomQuizTitle').textContent=data.quizTitle;
   const permanent=`${location.origin}/student?quiz=${encodeURIComponent(quiz.id)}`;
-  const byCode=`${location.origin}/student?code=${roomCode}`;
-  qs('#studentUrl').innerHTML=`<strong>Постоянная ссылка именно этой викторины:</strong><br><span class="break-link">${esc(permanent)}</span><br><br><span class="muted">Запасной вариант для текущего запуска:</span> <span class="break-link">${esc(byCode)}</span>`;
+  qs('#studentUrl').innerHTML=`<strong>Вход для учеников:</strong><br><span class="break-link">${esc(permanent)}</span><br><br><span class="muted">Покажите QR-код на экране. Ученики сканируют его камерой телефона и сразу попадают в эту викторину.</span>`;
+  qs('#roomQr').src=qrUrlFor(permanent);
   show(roomView);
   if(eventSource) eventSource.close();
-  eventSource=new EventSource(`/api/rooms/${roomCode}/events?token=${encodeURIComponent(teacherToken)}`);
+  eventSource=new EventSource(`/api/rooms/${encodeURIComponent(roomId)}/events?token=${encodeURIComponent(teacherToken)}`);
   eventSource.onmessage=(e)=>renderTeacherState(JSON.parse(e.data));
   eventSource.onerror=()=>{};
   clearInterval(heartbeatTimer);
-  heartbeatTimer=setInterval(()=>{ if(roomCode) fetch(`/api/rooms/${roomCode}/status`).catch(()=>{}); }, 60000);
+  heartbeatTimer=setInterval(()=>{ if(roomId) fetch(`/api/rooms/${encodeURIComponent(roomId)}/status`).catch(()=>{}); }, 60000);
 }
 function renderTeacherState(state) {
   const lobby=state.status==='lobby';
@@ -315,9 +343,8 @@ function renderTeacherState(state) {
   qs('#emptyPodium').classList.toggle('hidden',state.participants.length>0 || !ratingVisible);
   if(!ratingVisible) return;
 
+  const playerEls=[];
   state.participants.forEach(p=>{
-    const progress=Math.max(0,Math.min(1,p.correct/Math.max(1,p.total)));
-    const height=Math.round(72 + progress*235);
     const el=document.createElement('div'); el.className='podium-player';
     const medal=p.awardEligible && p.rank===1?'🥇':p.awardEligible && p.rank===2?'🥈':p.awardEligible && p.rank===3?'🥉':'';
     const rankText=p.rank?`${medal} ${p.rank}`:'—';
@@ -326,35 +353,45 @@ function renderTeacherState(state) {
         <div class="avatar-large">${esc(p.avatar||'🦊')}</div>
         <strong class="podium-name">${esc(p.name)}</strong>
         <div class="podium-stats">${p.answered}/${p.total} / ✓${p.correct}</div>
+        <div class="podium-rank-inline">${rankText}</div>
       </div>
-      <div class="podium-step" style="height:${height}px">
-        <div class="podium-rank">${rankText}</div>
-        <div class="podium-score">Верных: ${p.correct}</div>
-      </div>`;
+      <div class="podium-step"></div>`;
     podium.appendChild(el);
+    playerEls.push({el,p});
+  });
+
+  // Высота одной ступени определяется строго по формуле:
+  // (высота зоны пьедестала - высота блока персонажа) / количество вопросов.
+  const stageHeight=podium.clientHeight || 390;
+  const iconHeight=playerEls[0]?.el.querySelector('.podium-person')?.offsetHeight || 118;
+  const oneStep=Math.max(0,(stageHeight-iconHeight)/Math.max(1,state.totalQuestions||1));
+  playerEls.forEach(({el,p})=>{
+    const height=Math.max(0,Math.min(stageHeight-iconHeight,p.correct*oneStep));
+    el.querySelector('.podium-step').style.height=`${height}px`;
   });
 }
 
 qs('#startGameBtn').onclick=async()=>{
-  if(!roomCode||!teacherToken)return;
-  const r=await fetch(`/api/rooms/${roomCode}/start`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
+  if(!roomId||!teacherToken)return;
+  const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/start`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
   const data=await r.json().catch(()=>({}));
   if(!r.ok) alert(data.error||'Не удалось запустить викторину');
 };
 
 qs('#ratingToggleBtn').onclick=async()=>{
-  if(!roomCode||!teacherToken)return;
+  if(!roomId||!teacherToken)return;
   const currentlyOn=!qs('#ratingToggleBtn').classList.contains('danger');
-  const r=await fetch(`/api/rooms/${roomCode}/rating-visibility`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken,visible:!currentlyOn})});
+  const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/rating-visibility`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken,visible:!currentlyOn})});
   const data=await r.json().catch(()=>({}));
   if(!r.ok) alert(data.error||'Не удалось изменить отображение рейтинга');
 };
 
 qs('#closeRoomBtn').onclick=()=>{
-  if(!roomCode)return; if(!confirm('Завершить викторину для всех учеников?'))return;
-  fetch(`/api/rooms/${roomCode}/close`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
-  eventSource?.close(); eventSource=null; clearInterval(heartbeatTimer); heartbeatTimer=null; roomCode=null; teacherToken=null; show(listView); loadList();
+  if(!roomId)return; if(!confirm('Завершить викторину для всех учеников?'))return;
+  fetch(`/api/rooms/${encodeURIComponent(roomId)}/close`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({teacherToken})});
+  eventSource?.close(); eventSource=null; clearInterval(heartbeatTimer); heartbeatTimer=null; roomId=null; teacherToken=null; show(listView); loadList();
 };
+ensureBuiltInQuizzes();
 loadList();
 </script>
 </body>

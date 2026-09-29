@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const { URL } = require('url');
 
 const PORT = Number(process.env.PORT || 3000);
@@ -47,7 +48,6 @@ async function readBody(req) {
 function readQuizzes(){ try{return JSON.parse(fs.readFileSync(QUIZZES_FILE,'utf8'));}catch{return [];} }
 function writeQuizzes(q){ fs.writeFileSync(QUIZZES_FILE,JSON.stringify(q,null,2),'utf8'); }
 function id(prefix=''){ return prefix + crypto.randomBytes(8).toString('hex'); }
-function code(){ let c; do{c=String(Math.floor(100000+Math.random()*900000));}while(rooms.has(c)); return c; }
 function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
 function numberValue(value){
   if(typeof value==='number' && Number.isFinite(value)) return value;
@@ -69,7 +69,7 @@ function cleanQuiz(body){
   const questions=qs.map(src=>{
     const qtext=String(src.text||'').trim();
     const imageData=cleanImageData(src.imageData||'');
-    if(!qtext && !imageData) throw new Error('В каждом вопросе нужен текст или изображение');
+    if(src.type!=='sentence' && !qtext && !imageData) throw new Error('В каждом вопросе нужен текст или изображение');
     if(src.type==='choice'){
       const options=Array.isArray(src.options)?src.options.map(x=>String(x).trim()).filter(Boolean):[];
       if(options.length<2) throw new Error('В вопросе с выбором должно быть минимум 2 варианта');
@@ -80,6 +80,11 @@ function cleanQuiz(body){
       const n=numberValue(String(src.correctAnswer??'')); if(n===null) throw new Error('Числовой ответ должен быть целым числом или конечной десятичной дробью');
       return {id:src.id||id('q_'),type:'number',text:qtext,imageData,correctAnswer:n};
     }
+    if(src.type==='sentence'){
+      const tokens=Array.isArray(src.tokens)?src.tokens.map(x=>String(x).trim()).filter(Boolean):[];
+      if(tokens.length<2) throw new Error('В задании «Составь предложение» нужно минимум 2 плашки');
+      return {id:src.id||id('q_'),type:'sentence',text:qtext,imageData,tokens};
+    }
     throw new Error('Неизвестный тип вопроса');
   });
   return {id:body.id||id('quiz_'),title,questions,updatedAt:new Date().toISOString()};
@@ -88,6 +93,7 @@ function makeStudentQuestions(room,p){
   return p.order.map((qi,pos)=>{
     const q=room.quiz.questions[qi];
     if(q.type==='choice') return {id:q.id,number:pos+1,type:'choice',text:q.text,imageData:q.imageData||'',options:p.optionOrders[qi].map(oi=>({key:oi,text:q.options[oi]}))};
+    if(q.type==='sentence') return {id:q.id,number:pos+1,type:'sentence',text:q.text,imageData:q.imageData||'',tokens:p.optionOrders[qi].map(oi=>({key:oi,text:q.tokens[oi]}))};
     return {id:q.id,number:pos+1,type:'number',text:q.text,imageData:q.imageData||''};
   });
 }
@@ -118,7 +124,7 @@ function leaderboard(room){
 }
 function roomState(room){
   return {
-    code:room.code,
+    roomId:room.id,
     quizTitle:room.quiz.title,
     status:room.status,
     totalQuestions:room.quiz.questions.length,
@@ -149,6 +155,12 @@ function serveFile(res,file){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const pathname=decodeURIComponent(u.pathname);
   try{
+    if(req.method==='GET' && pathname==='/api/qr'){
+      const target=String(u.searchParams.get('text')||'').trim();
+      if(!target || target.length>2000) return json(res,400,{error:'Некорректная ссылка для QR-кода'});
+      const svg=await QRCode.toString(target,{type:'svg',errorCorrectionLevel:'M',margin:2,width:360});
+      res.writeHead(200,{'content-type':'image/svg+xml; charset=utf-8','cache-control':'no-store'});res.end(svg);return;
+    }
     if(req.method==='GET' && pathname==='/api/quizzes') return json(res,200,readQuizzes().map(q=>({id:q.id,title:q.title,questionCount:q.questions.length,updatedAt:q.updatedAt})));
     let m=pathname.match(/^\/api\/quizzes\/([^/]+)$/);
     if(m && req.method==='GET'){const q=readQuizzes().find(x=>x.id===m[1]);return q?json(res,200,q):json(res,404,{error:'Викторина не найдена'});}
@@ -159,7 +171,7 @@ const server=http.createServer(async(req,res)=>{
     if(m && req.method==='DELETE'){writeQuizzes(readQuizzes().filter(x=>x.id!==m[1]));return json(res,200,{ok:true});}
 
     // Постоянная ссылка каждой викторины ведёт на её текущую открытую комнату.
-    // Ссылка остаётся той же при каждом новом запуске, а 6-значный код комнаты может меняться.
+    // Пользовательские коды подключения отключены: ученики входят только по ссылке викторины.
     m=pathname.match(/^\/api\/quiz-room\/([^/]+)$/);
     if(m && req.method==='GET'){
       const quizId=m[1];
@@ -168,7 +180,7 @@ const server=http.createServer(async(req,res)=>{
         .sort((a,b)=>b.createdAt-a.createdAt);
       const room=candidates[0];
       if(!room) return json(res,404,{error:'Учитель ещё не открыл эту викторину'});
-      return json(res,200,{code:room.code,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
+      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
     }
 
     // Создание комнаты теперь создаёт ЛОББИ. Викторина начинается только после кнопки «Старт» у учителя.
@@ -180,19 +192,19 @@ const server=http.createServer(async(req,res)=>{
         else if (body.quizId) quiz=readQuizzes().find(q=>q.id===body.quizId);
         if(!quiz) return json(res,404,{error:'Викторина не найдена'});
       } catch(e) { return json(res,400,{error:e.message}); }
-      const c=code(),teacherToken=id('t_');
-      rooms.set(c,{code:c,teacherToken,quiz,status:'lobby',ratingVisible:true,createdAt:Date.now(),startedAt:null,participants:new Map(),listeners:new Set()});
-      return json(res,200,{code:c,teacherToken,quizTitle:quiz.title,quizId:quiz.id,status:'lobby'});
+      const roomId=id('r_'),teacherToken=id('t_');
+      rooms.set(roomId,{id:roomId,teacherToken,quiz,status:'lobby',ratingVisible:true,createdAt:Date.now(),startedAt:null,participants:new Map(),listeners:new Set()});
+      return json(res,200,{roomId,teacherToken,quizTitle:quiz.title,quizId:quiz.id,status:'lobby'});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)$/);
     if(m && req.method==='GET'){
       const room=rooms.get(m[1]);
       if(!room||room.status==='closed')return json(res,404,{error:'Комната не найдена или уже закрыта'});
-      return json(res,200,{code:room.code,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
+      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/events$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/events$/);
     if(m && req.method==='GET'){
       const room=rooms.get(m[1]);if(!room||u.searchParams.get('token')!==room.teacherToken)return text(res,403,'Нет доступа');
       res.writeHead(200,{'content-type':'text/event-stream; charset=utf-8','cache-control':'no-cache','connection':'keep-alive','access-control-allow-origin':'*'});
@@ -201,7 +213,7 @@ const server=http.createServer(async(req,res)=>{
     }
 
     // Подключаться можно и в лобби, и после старта — до тех пор, пока учитель не завершит игру.
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/join$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);
       if(!room||room.status==='closed')return json(res,404,{error:'Комната не найдена или уже закрыта'});
@@ -215,7 +227,7 @@ const server=http.createServer(async(req,res)=>{
         finished:false,score:0,totalResponseMs:0,
         questionStartedAt:room.status==='active'?now:null
       };
-      room.quiz.questions.forEach((q,i)=>{if(q.type==='choice')p.optionOrders[i]=shuffle(q.options.map((_,j)=>j));});
+      room.quiz.questions.forEach((q,i)=>{if(q.type==='choice')p.optionOrders[i]=shuffle(q.options.map((_,j)=>j)); else if(q.type==='sentence')p.optionOrders[i]=shuffle(q.tokens.map((_,j)=>j));});
       room.participants.set(p.id,p);
       broadcast(room);
       const place=rankFor(room,p.id);
@@ -226,7 +238,7 @@ const server=http.createServer(async(req,res)=>{
     }
 
     // Только учитель запускает викторину.
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/start$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/start$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
       const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
@@ -238,7 +250,7 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,{ok:true,status:'active'});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/answer$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/answer$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);
       if(!room||room.status==='closed')return json(res,410,{error:'Викторина завершена'});
@@ -250,6 +262,11 @@ const server=http.createServer(async(req,res)=>{
       let correct=false,answer=body.answer;
       if(q.type==='choice'){
         answer=Number(answer);correct=Number.isInteger(answer)&&answer===q.correctIndex;
+      }else if(q.type==='sentence'){
+        if(!Array.isArray(answer)) return json(res,400,{error:'Составьте утверждение из всех плашек',invalid:true});
+        answer=answer.map(Number);
+        const expected=q.tokens.map((_,i)=>i);
+        correct=answer.length===expected.length && answer.every((v,i)=>Number.isInteger(v)&&v===expected[i]);
       }else{
         answer=numberValue(String(answer??''));
         if(answer===null)return json(res,400,{error:'Введите целое число или конечную десятичную дробь',invalid:true});
@@ -268,7 +285,7 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,{correct,finished:p.finished,answered:p.answers.length,total:p.order.length,correctCount:p.answers.filter(a=>a.correct).length,pointsEarned,score:p.score,rank:place.rank,totalPlayers:place.totalPlayers,ratingVisible:room.ratingVisible!==false});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/status$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/status$/);
     if(m && req.method==='GET'){
       const room=rooms.get(m[1]); if(!room||room.status==='closed')return json(res,410,{status:'closed'});
       const participantId=u.searchParams.get('participantId');
@@ -285,7 +302,7 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,{status:room.status,participantCount:room.participants.size});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/rating-visibility$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/rating-visibility$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
       const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
@@ -294,11 +311,11 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,{ok:true,ratingVisible:room.ratingVisible});
     }
 
-    m=pathname.match(/^\/api\/rooms\/(\d{6})\/close$/);
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/close$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
       const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
-      room.status='closed';broadcast(room);setTimeout(()=>{closeSse(room);rooms.delete(room.code);},3000);return json(res,200,{ok:true});
+      room.status='closed';broadcast(room);setTimeout(()=>{closeSse(room);rooms.delete(room.id);},3000);return json(res,200,{ok:true});
     }
 
     if(req.method==='GET'){
@@ -318,8 +335,8 @@ const server=http.createServer(async(req,res)=>{
 server.listen(PORT,'0.0.0.0',()=>{
   console.log(`\nВикторина запущена:`);
   console.log(`Учитель: http://localhost:${PORT}/teacher`);
-  console.log(`Ученик:  http://localhost:${PORT}/student`);
+  console.log('Ученики входят по постоянной ссылке конкретной викторины из кабинета учителя.');
   const nets=os.networkInterfaces(),addresses=[];
   for(const list of Object.values(nets))for(const n of list||[])if(n.family==='IPv4'&&!n.internal)addresses.push(n.address);
-  if(addresses.length){console.log('\nЕсли телефоны и компьютер в одной Wi‑Fi сети:');for(const a of addresses)console.log(`http://${a}:${PORT}/student`);}
+  if(addresses.length){console.log('\nДля локальной проверки ссылка ученика формируется в кабинете учителя после создания викторины.');}
 });

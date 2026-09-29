@@ -11,8 +11,7 @@
   <section id="joinView" class="card join-box">
     <div class="brand">Викторина</div>
     <h1>Подключиться</h1>
-    <div class="field" id="codeField"><label>Код викторины</label><input id="code" inputmode="numeric" maxlength="6" placeholder="6 цифр" style="font-size:26px;letter-spacing:.08em;text-align:center" /></div>
-    <div id="quizLinkNotice" class="notice hidden" style="margin-bottom:14px"></div>
+    <div id="quizLinkNotice" class="notice" style="margin-bottom:14px">Открой ссылку конкретной викторины, которую дал учитель.</div>
     <div class="field"><label>Твоё имя</label><input id="name" maxlength="40" placeholder="Например: Маша" /></div>
     <div class="field">
       <label>Выбери персонажа</label>
@@ -49,14 +48,11 @@
 <script>
 const $=s=>document.querySelector(s);
 const AVATARS=['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖'];
-let code='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
+let roomId='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
 let selectedAvatar=AVATARS[0], studentName='', quizStarted=false, roomStatus='lobby', ratingVisible=true;
 const initialParams=new URLSearchParams(location.search);
-const initialCode=initialParams.get('code');
 const initialQuizId=initialParams.get('quiz');
-if(initialCode && /^\d{6}$/.test(initialCode)) $('#code').value=initialCode;
 if(initialQuizId){
-  $('#codeField').classList.add('hidden');
   $('#quizLinkNotice').classList.remove('hidden');
   $('#quizLinkNotice').textContent='Это постоянная ссылка на конкретную викторину. Ищу открытую комнату учителя…';
 }
@@ -68,12 +64,12 @@ async function resolvePermanentQuizLink(){
     const r=await fetch(`/api/quiz-room/${encodeURIComponent(initialQuizId)}`);
     const data=await r.json().catch(()=>({}));
     if(!r.ok){
-      code=''; $('#code').value='';
+      roomId='';
       notice.className='notice';
       notice.textContent=data.error||'Учитель ещё не открыл эту викторину.';
       return false;
     }
-    code=data.code; $('#code').value=code;
+    roomId=data.roomId;
     notice.className='notice';
     notice.innerHTML=`Викторина: <strong>${esc(data.quizTitle||'')}</strong>. Комната открыта.`;
     return true;
@@ -99,14 +95,12 @@ renderAvatarPicker();
 
 $('#joinBtn').onclick=async()=>{
   $('#joinMessage').textContent='';
-  if(initialQuizId){
-    const found=await resolvePermanentQuizLink();
-    if(!found){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Учитель ещё не открыл лобби этой викторины.'; return; }
-  } else code=$('#code').value.trim();
+  if(!initialQuizId){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Нужна ссылка конкретной викторины от учителя.'; return; }
+  const found=await resolvePermanentQuizLink();
+  if(!found){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Учитель ещё не открыл лобби этой викторины.'; return; }
   studentName=$('#name').value.trim();
-  if(!/^\d{6}$/.test(code)){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите 6-значный код'; return; }
   if(!studentName){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
-  fetch(`/api/rooms/${code}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:studentName,avatar:selectedAvatar})})
+  fetch(`/api/rooms/${encodeURIComponent(roomId)}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:studentName,avatar:selectedAvatar})})
     .then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
       if(!ok) throw new Error(data.error||'Не удалось подключиться');
       participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank??null; totalPlayers=data.totalPlayers||1; roomStatus=data.roomStatus||'lobby'; ratingVisible=data.ratingVisible!==false;
@@ -140,7 +134,7 @@ function startStatusCheck(){
   const check=async()=>{
     try{
       const suffix=participantId?`?participantId=${encodeURIComponent(participantId)}`:'';
-      const r=await fetch(`/api/rooms/${code}/status${suffix}`);
+      const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/status${suffix}`);
       if(r.status===410){
         clearInterval(statusTimer);
         if(!finishedLocal){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';}
@@ -179,6 +173,24 @@ function renderQuestion(){
   if(q.type==='choice'){
     const grid=document.createElement('div');grid.className='answer-grid';
     q.options.forEach(opt=>{const b=document.createElement('button');b.className='answer-btn';b.innerHTML=esc(opt.text);b.onclick=()=>submit(q,opt.key);grid.appendChild(b);});area.appendChild(grid);
+  } else if(q.type==='sentence') {
+    const answerZone=document.createElement('div');answerZone.className='sentence-answer-zone';
+    answerZone.innerHTML='<div class="sentence-zone-label">Ответ</div><div class="sentence-answer-tiles"></div>';
+    const bank=document.createElement('div');bank.className='sentence-bank';
+    const actions=document.createElement('div');actions.className='sentence-actions';
+    const clear=document.createElement('button');clear.type='button';clear.className='btn';clear.textContent='Очистить';
+    const submitBtn=document.createElement('button');submitBtn.type='button';submitBtn.className='btn primary';submitBtn.textContent='Ответить';
+    actions.append(clear,submitBtn); area.append(answerZone,bank,actions);
+    const selected=[];
+    const renderTiles=()=>{
+      const target=answerZone.querySelector('.sentence-answer-tiles');target.innerHTML='';bank.innerHTML='';
+      selected.forEach(item=>{const b=document.createElement('button');b.type='button';b.className='word-tile selected';b.textContent=item.text;b.onclick=()=>{const i=selected.findIndex(x=>x.key===item.key);if(i>=0)selected.splice(i,1);renderTiles();};target.appendChild(b);});
+      q.tokens.filter(item=>!selected.some(x=>x.key===item.key)).forEach(item=>{const b=document.createElement('button');b.type='button';b.className='word-tile';b.textContent=item.text;b.onclick=()=>{selected.push(item);renderTiles();};bank.appendChild(b);});
+      submitBtn.disabled=selected.length!==q.tokens.length;
+    };
+    clear.onclick=()=>{selected.splice(0);renderTiles();};
+    submitBtn.onclick=()=>submit(q,selected.map(x=>x.key));
+    renderTiles();
   } else {
     const input=document.createElement('input');input.inputMode='decimal';input.placeholder='Введите число';input.style.fontSize='24px';
     const btn=document.createElement('button');btn.className='btn primary';btn.textContent='Ответить';btn.style.marginTop='12px';btn.style.width='100%';
@@ -188,7 +200,7 @@ function renderQuestion(){
 async function submit(q,answer){
   if(locked)return; locked=true;
   try{
-    const r=await fetch(`/api/rooms/${code}/answer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({participantId,questionId:q.id,answer})});
+    const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/answer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({participantId,questionId:q.id,answer})});
     const data=await r.json();
     if(!r.ok){
       locked=false;
