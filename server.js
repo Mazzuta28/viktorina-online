@@ -27,11 +27,11 @@ const MIME = {
 
 function json(res, status, data) {
   const body = JSON.stringify(data);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(body) });
+  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(body), 'cache-control': 'no-store, no-cache, must-revalidate', 'pragma': 'no-cache', 'expires': '0' });
   res.end(body);
 }
 function text(res, status, body, type='text/plain; charset=utf-8') {
-  res.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(body) });
+  res.writeHead(status, { 'content-type': type, 'content-length': Buffer.byteLength(body), 'cache-control': 'no-store, no-cache, must-revalidate', 'pragma': 'no-cache', 'expires': '0' });
   res.end(body);
 }
 async function readBody(req) {
@@ -203,7 +203,7 @@ function serveFile(res,file){
   if(!file.startsWith(PUBLIC_DIR)) return text(res,403,'Forbidden');
   fs.readFile(file,(err,data)=>{
     if(err)return text(res,404,'Не найдено');
-    res.writeHead(200,{'content-type':MIME[path.extname(file)]||'application/octet-stream'});
+    res.writeHead(200,{'content-type':MIME[path.extname(file)]||'application/octet-stream','cache-control':'no-store, no-cache, must-revalidate','pragma':'no-cache','expires':'0'});
     res.end(data);
   });
 }
@@ -211,6 +211,7 @@ function serveFile(res,file){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const pathname=decodeURIComponent(u.pathname);
   try{
+    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.5',updated:'2026-09-29'});
     if(req.method==='GET' && pathname==='/api/qr'){
       const target=String(u.searchParams.get('text')||'').trim();
       if(!target || target.length>2000) return json(res,400,{error:'Некорректная ссылка для QR-кода'});
