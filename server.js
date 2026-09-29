@@ -123,6 +123,7 @@ function leaderboard(room){
   return items.map(p=>({...p,rank:null,awardEligible:false}));
 }
 function roomState(room){
+  const reportReady=room.status==='closed' || allParticipantsFinished(room);
   return {
     roomId:room.id,
     quizTitle:room.quiz.title,
@@ -130,7 +131,9 @@ function roomState(room){
     totalQuestions:room.quiz.questions.length,
     participantCount:room.participants.size,
     ratingVisible:room.ratingVisible!==false,
-    participants:leaderboard(room)
+    participants:leaderboard(room),
+    reportReady,
+    report:reportReady?makeReport(room):null
   };
 }
 function rankFor(room,participantId){
@@ -138,6 +141,59 @@ function rankFor(room,participantId){
   return {rank:item?.rank??null,totalPlayers:board.length,correct:item?.correct||0};
 }
 function pointsForAnswer(correct){ return correct ? 1000 : 0; }
+function displayNumber(value){
+  if(typeof value!=='number' || !Number.isFinite(value)) return String(value??'');
+  return String(value).replace('.',',');
+}
+function answerTextForReport(q, answer){
+  if(q.type==='choice'){
+    const i=Number(answer);
+    return Number.isInteger(i) && q.options[i]!==undefined ? q.options[i] : '—';
+  }
+  if(q.type==='sentence'){
+    if(!Array.isArray(answer)) return '—';
+    return answer.map(i=>q.tokens[Number(i)] ?? '—').join(' ');
+  }
+  return displayNumber(answer);
+}
+function correctTextForReport(q){
+  if(q.type==='choice') return q.options[q.correctIndex] ?? '—';
+  if(q.type==='sentence') return q.tokens.join(' ');
+  return displayNumber(q.correctAnswer);
+}
+function makeReport(room){
+  const total=room.quiz.questions.length;
+  const participants=[...room.participants.values()]
+    .sort((a,b)=>a.joinedAt-b.joinedAt || a.name.localeCompare(b.name,'ru'))
+    .map(p=>{
+      const correct=p.answers.filter(a=>a.correct).length;
+      const wrongAnswers=p.answers.filter(a=>!a.correct);
+      const errors=wrongAnswers.map(a=>{
+        const qi=room.quiz.questions.findIndex(q=>q.id===a.questionId);
+        const q=qi>=0?room.quiz.questions[qi]:null;
+        if(!q) return {questionNumber:null,questionText:'Вопрос не найден',studentAnswer:'—',correctAnswer:'—'};
+        return {
+          questionNumber:qi+1,
+          questionText:q.text || (q.imageData?'Задание с изображением':`Вопрос ${qi+1}`),
+          hasImage:Boolean(q.imageData),
+          studentAnswer:answerTextForReport(q,a.answer),
+          correctAnswer:correctTextForReport(q)
+        };
+      });
+      return {
+        id:p.id,name:p.name,avatar:p.avatar,
+        answered:p.answers.length,total,
+        correct,wrong:wrongAnswers.length,
+        unanswered:Math.max(0,total-p.answers.length),
+        finished:p.finished,
+        errors
+      };
+    });
+  return {quizTitle:room.quiz.title,totalQuestions:total,participantCount:participants.length,participants};
+}
+function allParticipantsFinished(room){
+  return room.participants.size>0 && [...room.participants.values()].every(p=>p.finished);
+}
 function broadcast(room){
   const payload=`data: ${JSON.stringify(roomState(room))}\n\n`;
   for(const res of room.listeners){ try{res.write(payload);}catch{} }
@@ -279,7 +335,7 @@ const server=http.createServer(async(req,res)=>{
       p.totalResponseMs=(p.totalResponseMs||0)+responseMs;
       p.answers.push({questionId:q.id,answer,correct,points:pointsEarned,responseMs,at:answeredAt});
       p.current++;
-      if(p.current>=p.order.length)p.finished=true; else p.questionStartedAt=answeredAt+900;
+      if(p.current>=p.order.length)p.finished=true; else p.questionStartedAt=answeredAt;
       const place=rankFor(room,p.id);
       broadcast(room);
       return json(res,200,{correct,finished:p.finished,answered:p.answers.length,total:p.order.length,correctCount:p.answers.filter(a=>a.correct).length,pointsEarned,score:p.score,rank:place.rank,totalPlayers:place.totalPlayers,ratingVisible:room.ratingVisible!==false});
@@ -315,7 +371,12 @@ const server=http.createServer(async(req,res)=>{
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
       const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
-      room.status='closed';broadcast(room);setTimeout(()=>{closeSse(room);rooms.delete(room.id);},3000);return json(res,200,{ok:true});
+      room.status='closed';
+      const report=makeReport(room);
+      broadcast(room);
+      setTimeout(()=>closeSse(room),1500);
+      setTimeout(()=>rooms.delete(room.id),30*60*1000);
+      return json(res,200,{ok:true,report});
     }
 
     if(req.method==='GET'){
