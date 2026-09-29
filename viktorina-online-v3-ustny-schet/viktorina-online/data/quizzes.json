@@ -1,0 +1,415 @@
+[
+  {
+    "id": "quiz_oral_photo_20260929",
+    "title": "Устный счёт",
+    "questions": [
+      {
+        "id": "oral_001",
+        "type": "number",
+        "text": "12 · 2",
+        "imageData": "",
+        "correctAnswer": 24
+      },
+      {
+        "id": "oral_002",
+        "type": "number",
+        "text": "12 · 3",
+        "imageData": "",
+        "correctAnswer": 36
+      },
+      {
+        "id": "oral_003",
+        "type": "number",
+        "text": "12 · 4",
+        "imageData": "",
+        "correctAnswer": 48
+      },
+      {
+        "id": "oral_004",
+        "type": "number",
+        "text": "13 · 2",
+        "imageData": "",
+        "correctAnswer": 26
+      },
+      {
+        "id": "oral_005",
+        "type": "number",
+        "text": "13 · 3",
+        "imageData": "",
+        "correctAnswer": 39
+      },
+      {
+        "id": "oral_006",
+        "type": "number",
+        "text": "13 · 4",
+        "imageData": "",
+        "correctAnswer": 52
+      },
+      {
+        "id": "oral_007",
+        "type": "number",
+        "text": "14 · 2",
+        "imageData": "",
+        "correctAnswer": 28
+      },
+      {
+        "id": "oral_008",
+        "type": "number",
+        "text": "14 · 3",
+        "imageData": "",
+        "correctAnswer": 42
+      },
+      {
+        "id": "oral_009",
+        "type": "number",
+        "text": "14 · 4",
+        "imageData": "",
+        "correctAnswer": 56
+      },
+      {
+        "id": "oral_010",
+        "type": "number",
+        "text": "15 · 2",
+        "imageData": "",
+        "correctAnswer": 30
+      },
+      {
+        "id": "oral_011",
+        "type": "number",
+        "text": "15 · 3",
+        "imageData": "",
+        "correctAnswer": 45
+      },
+      {
+        "id": "oral_012",
+        "type": "number",
+        "text": "15 · 4",
+        "imageData": "",
+        "correctAnswer": 60
+      },
+      {
+        "id": "oral_013",
+        "type": "number",
+        "text": "16 · 2",
+        "imageData": "",
+        "correctAnswer": 32
+      },
+      {
+        "id": "oral_014",
+        "type": "number",
+        "text": "16 · 3",
+        "imageData": "",
+        "correctAnswer": 48
+      },
+      {
+        "id": "oral_015",
+        "type": "number",
+        "text": "16 · 4",
+        "imageData": "",
+        "correctAnswer": 64
+      },
+      {
+        "id": "oral_016",
+        "type": "number",
+        "text": "17 · 2",
+        "imageData": "",
+        "correctAnswer": 34
+      },
+      {
+        "id": "oral_017",
+        "type": "number",
+        "text": "17 · 3",
+        "imageData": "",
+        "correctAnswer": 51
+      },
+      {
+        "id": "oral_018",
+        "type": "number",
+        "text": "17 · 4",
+        "imageData": "",
+        "correctAnswer": 68
+      },
+      {
+        "id": "oral_019",
+        "type": "number",
+        "text": "18 · 2",
+        "imageData": "",
+        "correctAnswer": 36
+      },
+      {
+        "id": "oral_020",
+        "type": "number",
+        "text": "18 · 3",
+        "imageData": "",
+        "correctAnswer": 54
+      },
+      {
+        "id": "oral_021",
+        "type": "number",
+        "text": "18 · 4",
+        "imageData": "",
+        "correctAnswer": 72
+      },
+      {
+        "id": "oral_022",
+        "type": "number",
+        "text": "19 · 2",
+        "imageData": "",
+        "correctAnswer": 38
+      },
+      {
+        "id": "oral_023",
+        "type": "number",
+        "text": "19 · 3",
+        "imageData": "",
+        "correctAnswer": 57
+      },
+      {
+        "id": "oral_024",
+        "type": "number",
+        "text": "19 · 4",
+        "imageData": "",
+        "correctAnswer": 76
+      },
+      {
+        "id": "oral_025",
+        "type": "number",
+        "text": "12 · 0,5",
+        "imageData": "",
+        "correctAnswer": 6
+      },
+      {
+        "id": "oral_026",
+        "type": "number",
+        "text": "14 · 0,5",
+        "imageData": "",
+        "correctAnswer": 7
+      },
+      {
+        "id": "oral_027",
+        "type": "number",
+        "text": "16 · 0,5",
+        "imageData": "",
+        "correctAnswer": 8
+      },
+      {
+        "id": "oral_028",
+        "type": "number",
+        "text": "18 · 0,5",
+        "imageData": "",
+        "correctAnswer": 9
+      },
+      {
+        "id": "oral_029",
+        "type": "number",
+        "text": "20 · 0,5",
+        "imageData": "",
+        "correctAnswer": 10
+      },
+      {
+        "id": "oral_030",
+        "type": "number",
+        "text": "22 · 0,5",
+        "imageData": "",
+        "correctAnswer": 11
+      },
+      {
+        "id": "oral_031",
+        "type": "number",
+        "text": "24 · 0,5",
+        "imageData": "",
+        "correctAnswer": 12
+      },
+      {
+        "id": "oral_032",
+        "type": "number",
+        "text": "26 · 0,5",
+        "imageData": "",
+        "correctAnswer": 13
+      },
+      {
+        "id": "oral_033",
+        "type": "number",
+        "text": "30 · 0,5",
+        "imageData": "",
+        "correctAnswer": 15
+      },
+      {
+        "id": "oral_034",
+        "type": "number",
+        "text": "2 : 5",
+        "imageData": "",
+        "correctAnswer": 0.4
+      },
+      {
+        "id": "oral_035",
+        "type": "number",
+        "text": "3 : 5",
+        "imageData": "",
+        "correctAnswer": 0.6
+      },
+      {
+        "id": "oral_036",
+        "type": "number",
+        "text": "1 : 5",
+        "imageData": "",
+        "correctAnswer": 0.2
+      },
+      {
+        "id": "oral_037",
+        "type": "number",
+        "text": "4 : 5",
+        "imageData": "",
+        "correctAnswer": 0.8
+      },
+      {
+        "id": "oral_038",
+        "type": "number",
+        "text": "6 : 5",
+        "imageData": "",
+        "correctAnswer": 1.2
+      },
+      {
+        "id": "oral_039",
+        "type": "number",
+        "text": "7 : 5",
+        "imageData": "",
+        "correctAnswer": 1.4
+      },
+      {
+        "id": "oral_040",
+        "type": "number",
+        "text": "8 : 5",
+        "imageData": "",
+        "correctAnswer": 1.6
+      },
+      {
+        "id": "oral_041",
+        "type": "number",
+        "text": "9 : 5",
+        "imageData": "",
+        "correctAnswer": 1.8
+      },
+      {
+        "id": "oral_042",
+        "type": "number",
+        "text": "11 : 5",
+        "imageData": "",
+        "correctAnswer": 2.2
+      },
+      {
+        "id": "oral_043",
+        "type": "number",
+        "text": "12 : 5",
+        "imageData": "",
+        "correctAnswer": 2.4
+      },
+      {
+        "id": "oral_044",
+        "type": "number",
+        "text": "13 : 5",
+        "imageData": "",
+        "correctAnswer": 2.6
+      },
+      {
+        "id": "oral_045",
+        "type": "number",
+        "text": "14 : 5",
+        "imageData": "",
+        "correctAnswer": 2.8
+      },
+      {
+        "id": "oral_046",
+        "type": "number",
+        "text": "2 · 1,5",
+        "imageData": "",
+        "correctAnswer": 3
+      },
+      {
+        "id": "oral_047",
+        "type": "number",
+        "text": "4 · 1,5",
+        "imageData": "",
+        "correctAnswer": 6
+      },
+      {
+        "id": "oral_048",
+        "type": "number",
+        "text": "6 · 1,5",
+        "imageData": "",
+        "correctAnswer": 9
+      },
+      {
+        "id": "oral_049",
+        "type": "number",
+        "text": "8 · 1,5",
+        "imageData": "",
+        "correctAnswer": 12
+      },
+      {
+        "id": "oral_050",
+        "type": "number",
+        "text": "10 · 1,5",
+        "imageData": "",
+        "correctAnswer": 15
+      },
+      {
+        "id": "oral_051",
+        "type": "number",
+        "text": "12 · 1,5",
+        "imageData": "",
+        "correctAnswer": 18
+      },
+      {
+        "id": "oral_052",
+        "type": "number",
+        "text": "14 · 1,5",
+        "imageData": "",
+        "correctAnswer": 21
+      },
+      {
+        "id": "oral_053",
+        "type": "number",
+        "text": "16 · 1,5",
+        "imageData": "",
+        "correctAnswer": 24
+      },
+      {
+        "id": "oral_054",
+        "type": "number",
+        "text": "18 · 1,5",
+        "imageData": "",
+        "correctAnswer": 27
+      },
+      {
+        "id": "oral_055",
+        "type": "number",
+        "text": "20 · 1,5",
+        "imageData": "",
+        "correctAnswer": 30
+      },
+      {
+        "id": "oral_056",
+        "type": "number",
+        "text": "22 · 1,5",
+        "imageData": "",
+        "correctAnswer": 33
+      },
+      {
+        "id": "oral_057",
+        "type": "number",
+        "text": "24 · 1,5",
+        "imageData": "",
+        "correctAnswer": 36
+      },
+      {
+        "id": "oral_058",
+        "type": "number",
+        "text": "26 · 1,5",
+        "imageData": "",
+        "correctAnswer": 39
+      }
+    ],
+    "updatedAt": "2026-09-29T00:00:00.000Z"
+  }
+]

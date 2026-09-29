@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>Ученик — Викторина</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<main class="container">
+  <section id="joinView" class="card join-box">
+    <div class="brand">Викторина</div>
+    <h1>Подключиться</h1>
+    <div id="quizLinkNotice" class="notice" style="margin-bottom:14px">Открой ссылку конкретной викторины, которую дал учитель.</div>
+    <div class="field"><label>Твоё имя</label><input id="name" maxlength="40" placeholder="Например: Маша" /></div>
+    <div class="field">
+      <label>Выбери персонажа</label>
+      <div id="avatarPicker" class="avatar-picker"></div>
+    </div>
+    <button id="joinBtn" class="btn primary" style="width:100%">Войти</button>
+    <div id="joinMessage" style="margin-top:12px"></div>
+  </section>
+
+  <section id="waitView" class="card join-box hidden" style="text-align:center">
+    <div id="waitAvatar" class="waiting-avatar"></div>
+    <h1 id="waitName" style="margin-bottom:6px"></h1>
+    <div class="muted" id="waitQuizTitle"></div>
+    <div class="waiting-title">Ты подключился!</div>
+    <p class="muted">Ждём, когда учитель нажмёт «Старт».</p>
+    <div class="waiting-dots"><span></span><span></span><span></span></div>
+  </section>
+
+  <section id="quizView" class="card hidden" style="width:min(760px,100%);margin:3vh auto 0">
+    <div class="hstack space"><div><div class="muted" id="quizTitle"></div><strong id="counter"></strong></div><div class="hstack"><div id="rank" class="badge">Место: —</div><div id="score" class="badge">Верных: 0</div></div></div>
+    <div class="progress"><div id="progressBar"></div></div>
+    <div id="questionText" class="student-question"></div>
+    <div id="answerArea"></div>
+    <div id="feedback"></div>
+  </section>
+
+  <section id="finishView" class="card join-box hidden" style="text-align:center">
+    <div id="finishAvatar" class="waiting-avatar"></div>
+    <h1>Готово 🎉</h1>
+    <p id="finalText" style="font-size:20px"></p>
+    <div class="muted">Результат уже видит учитель.</div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const AVATARS=['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖'];
+let roomId='', participantId='', questions=[], current=0, correctCount=0, score=0, currentRank=0, totalPlayers=0, locked=false, finishedLocal=false;
+let selectedAvatar=AVATARS[0], studentName='', quizStarted=false, roomStatus='lobby', ratingVisible=true;
+const initialParams=new URLSearchParams(location.search);
+const initialQuizId=initialParams.get('quiz');
+if(initialQuizId){
+  $('#quizLinkNotice').classList.remove('hidden');
+  $('#quizLinkNotice').textContent='Это постоянная ссылка на конкретную викторину. Ищу открытую комнату учителя…';
+}
+
+async function resolvePermanentQuizLink(){
+  if(!initialQuizId) return true;
+  const notice=$('#quizLinkNotice');
+  try{
+    const r=await fetch(`/api/quiz-room/${encodeURIComponent(initialQuizId)}`);
+    const data=await r.json().catch(()=>({}));
+    if(!r.ok){
+      roomId='';
+      notice.className='notice';
+      notice.textContent=data.error||'Учитель ещё не открыл эту викторину.';
+      return false;
+    }
+    roomId=data.roomId;
+    notice.className='notice';
+    notice.innerHTML=`Викторина: <strong>${esc(data.quizTitle||'')}</strong>. Комната открыта.`;
+    return true;
+  }catch{
+    notice.className='error'; notice.textContent='Нет связи с сервером.'; return false;
+  }
+}
+if(initialQuizId){ resolvePermanentQuizLink(); setInterval(()=>{ if(!participantId) resolvePermanentQuizLink(); },3000); }
+
+function show(el){[$('#joinView'),$('#waitView'),$('#quizView'),$('#finishView')].forEach(x=>x.classList.add('hidden'));el.classList.remove('hidden');}
+function esc(s=''){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+function renderAvatarPicker(){
+  const root=$('#avatarPicker');root.innerHTML='';
+  AVATARS.forEach((avatar,i)=>{
+    const b=document.createElement('button');
+    b.type='button';b.className='avatar-choice'+(i===0?' selected':'');b.textContent=avatar;b.setAttribute('aria-label',`Персонаж ${i+1}`);
+    b.onclick=()=>{selectedAvatar=avatar;root.querySelectorAll('.avatar-choice').forEach(x=>x.classList.remove('selected'));b.classList.add('selected');};
+    root.appendChild(b);
+  });
+}
+renderAvatarPicker();
+
+$('#joinBtn').onclick=async()=>{
+  $('#joinMessage').textContent='';
+  if(!initialQuizId){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Нужна ссылка конкретной викторины от учителя.'; return; }
+  const found=await resolvePermanentQuizLink();
+  if(!found){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Учитель ещё не открыл лобби этой викторины.'; return; }
+  studentName=$('#name').value.trim();
+  if(!studentName){ $('#joinMessage').className='error'; $('#joinMessage').textContent='Введите имя'; return; }
+  fetch(`/api/rooms/${encodeURIComponent(roomId)}/join`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name:studentName,avatar:selectedAvatar})})
+    .then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{
+      if(!ok) throw new Error(data.error||'Не удалось подключиться');
+      participantId=data.participantId; questions=data.questions; current=0; correctCount=0; score=0; currentRank=data.rank??null; totalPlayers=data.totalPlayers||1; roomStatus=data.roomStatus||'lobby'; ratingVisible=data.ratingVisible!==false;
+      $('#quizTitle').textContent=data.quizTitle;
+      $('#waitQuizTitle').textContent=data.quizTitle;
+      $('#waitAvatar').textContent=selectedAvatar;
+      $('#finishAvatar').textContent=selectedAvatar;
+      $('#waitName').textContent=studentName;
+      startStatusCheck();
+      if(roomStatus==='active') beginQuiz(); else show($('#waitView'));
+    }).catch(err=>{ $('#joinMessage').className='error'; $('#joinMessage').textContent=err.message; });
+};
+
+function beginQuiz(){
+  if(quizStarted||finishedLocal)return;
+  quizStarted=true; roomStatus='active'; show($('#quizView')); renderQuestion();
+}
+
+let statusTimer=null;
+function updatePlaceDisplay(){
+  $('#rank').classList.toggle('hidden',!ratingVisible);
+  $('#rank').textContent=currentRank ? `Место: ${currentRank} из ${totalPlayers||1}` : 'Место: —';
+  $('#score').textContent=`Верных: ${correctCount}`;
+  if(finishedLocal){
+    const place=ratingVisible && currentRank ? `Место: ${currentRank} из ${totalPlayers||1}. ` : '';
+    $('#finalText').textContent=`${place}Правильных: ${correctCount} из ${questions.length}.`;
+  }
+}
+function startStatusCheck(){
+  clearInterval(statusTimer);
+  const check=async()=>{
+    try{
+      const suffix=participantId?`?participantId=${encodeURIComponent(participantId)}`:'';
+      const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/status${suffix}`);
+      if(r.status===410){
+        clearInterval(statusTimer);
+        if(!finishedLocal){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';}
+        return;
+      }
+      if(r.ok && participantId){
+        const data=await r.json();
+        roomStatus=data.status||roomStatus; currentRank=data.rank??null; totalPlayers=data.totalPlayers||totalPlayers; score=data.score??score; correctCount=data.correct??correctCount; ratingVisible=data.ratingVisible!==false;
+        updatePlaceDisplay();
+        if(roomStatus==='active' && !quizStarted && !finishedLocal) beginQuiz();
+      }
+    }catch{}
+  };
+  check();
+  statusTimer=setInterval(check,1200);
+}
+function handleResult(result){
+  correctCount=result.correctCount; score=result.score||0; currentRank=result.rank??currentRank; totalPlayers=result.totalPlayers||totalPlayers; ratingVisible=result.ratingVisible!==false;
+  const f=$('#feedback'); f.className='feedback '+(result.correct?'ok':'bad');
+  f.textContent=result.correct?'Верно! Ты поднялся на одну ступеньку.':'Неверно. Позиция в рейтинге не повышается.';
+  updatePlaceDisplay();
+  setTimeout(()=>{
+    if(result.finished){ finishedLocal=true; show($('#finishView')); updatePlaceDisplay(); }
+    else { current++; locked=false; renderQuestion(); }
+  },900);
+}
+function renderQuestion(){
+  const q=questions[current]; if(!q)return;
+  $('#counter').textContent=`Вопрос ${current+1} из ${questions.length}`; updatePlaceDisplay();
+  $('#progressBar').style.width=`${(current/questions.length)*100}%`;
+  const qbox=$('#questionText'); qbox.innerHTML='';
+  if(q.imageData){ const img=document.createElement('img'); img.className='student-question-image'; img.src=q.imageData; img.alt='Изображение к вопросу'; qbox.appendChild(img); }
+  if(q.text){ const txt=document.createElement('div'); txt.className='student-question-text'; txt.textContent=q.text; qbox.appendChild(txt); }
+  $('#feedback').className=''; $('#feedback').textContent='';
+  const area=$('#answerArea'); area.innerHTML='';
+  if(q.type==='choice'){
+    const grid=document.createElement('div');grid.className='answer-grid';
+    q.options.forEach(opt=>{const b=document.createElement('button');b.className='answer-btn';b.innerHTML=esc(opt.text);b.onclick=()=>submit(q,opt.key);grid.appendChild(b);});area.appendChild(grid);
+  } else if(q.type==='sentence') {
+    const answerZone=document.createElement('div');answerZone.className='sentence-answer-zone';
+    answerZone.innerHTML='<div class="sentence-zone-label">Ответ</div><div class="sentence-answer-tiles"></div>';
+    const bank=document.createElement('div');bank.className='sentence-bank';
+    const actions=document.createElement('div');actions.className='sentence-actions';
+    const clear=document.createElement('button');clear.type='button';clear.className='btn';clear.textContent='Очистить';
+    const submitBtn=document.createElement('button');submitBtn.type='button';submitBtn.className='btn primary';submitBtn.textContent='Ответить';
+    actions.append(clear,submitBtn); area.append(answerZone,bank,actions);
+    const selected=[];
+    const renderTiles=()=>{
+      const target=answerZone.querySelector('.sentence-answer-tiles');target.innerHTML='';bank.innerHTML='';
+      selected.forEach(item=>{const b=document.createElement('button');b.type='button';b.className='word-tile selected';b.textContent=item.text;b.onclick=()=>{const i=selected.findIndex(x=>x.key===item.key);if(i>=0)selected.splice(i,1);renderTiles();};target.appendChild(b);});
+      q.tokens.filter(item=>!selected.some(x=>x.key===item.key)).forEach(item=>{const b=document.createElement('button');b.type='button';b.className='word-tile';b.textContent=item.text;b.onclick=()=>{selected.push(item);renderTiles();};bank.appendChild(b);});
+      submitBtn.disabled=selected.length!==q.tokens.length;
+    };
+    clear.onclick=()=>{selected.splice(0);renderTiles();};
+    submitBtn.onclick=()=>submit(q,selected.map(x=>x.key));
+    renderTiles();
+  } else {
+    const input=document.createElement('input');input.inputMode='decimal';input.placeholder='Введите число';input.style.fontSize='24px';
+    const btn=document.createElement('button');btn.className='btn primary';btn.textContent='Ответить';btn.style.marginTop='12px';btn.style.width='100%';
+    btn.onclick=()=>submit(q,input.value); input.addEventListener('keydown',e=>{if(e.key==='Enter')submit(q,input.value)}); area.append(input,btn); setTimeout(()=>input.focus(),50);
+  }
+}
+async function submit(q,answer){
+  if(locked)return; locked=true;
+  try{
+    const r=await fetch(`/api/rooms/${encodeURIComponent(roomId)}/answer`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({participantId,questionId:q.id,answer})});
+    const data=await r.json();
+    if(!r.ok){
+      locked=false;
+      if(r.status===410){show($('#finishView'));$('#finalText').textContent='Учитель завершил викторину.';return;}
+      if(r.status===409 && data.error?.includes('не запустил')){quizStarted=false;show($('#waitView'));return;}
+      const f=$('#feedback');f.className='feedback bad';f.textContent=data.error||'Ошибка';return;
+    }
+    handleResult(data);
+  }catch{ locked=false; const f=$('#feedback');f.className='feedback bad';f.textContent='Нет связи с сервером'; }
+}
+</script>
+</body>
+</html>
