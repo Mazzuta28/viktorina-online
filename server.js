@@ -85,6 +85,17 @@ function cleanQuiz(body){
       if(tokens.length<2) throw new Error('В задании «Составь предложение» нужно минимум 2 плашки');
       return {id:src.id||id('q_'),type:'sentence',text:qtext,imageData,tokens};
     }
+    if(src.type==='splitmul'){
+      const leftNumber=Number(src.leftNumber), multiplier=Number(src.multiplier), tens=Number(src.tens), ones=Number(src.ones);
+      const parts=Array.isArray(src.correctParts)?src.correctParts.map(Number):[];
+      if(!Number.isInteger(leftNumber)||leftNumber<10||leftNumber>99) throw new Error('Некорректное двузначное число в задании по распределительному закону');
+      if(!Number.isInteger(multiplier)||multiplier<2||multiplier>9) throw new Error('Некорректный однозначный множитель');
+      if(tens!==Math.floor(leftNumber/10)*10 || ones!==leftNumber%10) throw new Error('Некорректное разложение двузначного числа');
+      if(parts.length!==3 || parts.some(x=>!Number.isFinite(x))) throw new Error('Некорректные ответы в задании по распределительному закону');
+      const expected=[tens*multiplier,ones*multiplier,leftNumber*multiplier];
+      if(parts.some((x,i)=>Math.abs(x-expected[i])>1e-12)) throw new Error('Некорректные ответы в задании по распределительному закону');
+      return {id:src.id||id('q_'),type:'splitmul',text:qtext||`${leftNumber} · ${multiplier}`,imageData,leftNumber,multiplier,tens,ones,correctParts:expected};
+    }
     throw new Error('Неизвестный тип вопроса');
   });
   return {id:body.id||id('quiz_'),title,questions,updatedAt:new Date().toISOString()};
@@ -94,6 +105,7 @@ function makeStudentQuestions(room,p){
     const q=room.quiz.questions[qi];
     if(q.type==='choice') return {id:q.id,number:pos+1,type:'choice',text:q.text,imageData:q.imageData||'',options:p.optionOrders[qi].map(oi=>({key:oi,text:q.options[oi]}))};
     if(q.type==='sentence') return {id:q.id,number:pos+1,type:'sentence',text:q.text,imageData:q.imageData||'',tokens:p.optionOrders[qi].map(oi=>({key:oi,text:q.tokens[oi]}))};
+    if(q.type==='splitmul') return {id:q.id,number:pos+1,type:'splitmul',text:q.text,imageData:q.imageData||'',leftNumber:q.leftNumber,multiplier:q.multiplier,tens:q.tens,ones:q.ones};
     return {id:q.id,number:pos+1,type:'number',text:q.text,imageData:q.imageData||''};
   });
 }
@@ -154,11 +166,16 @@ function answerTextForReport(q, answer){
     if(!Array.isArray(answer)) return '—';
     return answer.map(i=>q.tokens[Number(i)] ?? '—').join(' ');
   }
+  if(q.type==='splitmul'){
+    if(!answer || typeof answer!=='object') return '—';
+    return `${displayNumber(answer.part1)} + ${displayNumber(answer.part2)} = ${displayNumber(answer.result)}`;
+  }
   return displayNumber(answer);
 }
 function correctTextForReport(q){
   if(q.type==='choice') return q.options[q.correctIndex] ?? '—';
   if(q.type==='sentence') return q.tokens.join(' ');
+  if(q.type==='splitmul') return `${displayNumber(q.correctParts[0])} + ${displayNumber(q.correctParts[1])} = ${displayNumber(q.correctParts[2])}`;
   return displayNumber(q.correctAnswer);
 }
 function makeReport(room){
@@ -211,7 +228,7 @@ function serveFile(res,file){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const pathname=decodeURIComponent(u.pathname);
   try{
-    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.5',updated:'2026-09-29'});
+    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.6',updated:'2026-09-29'});
     if(req.method==='GET' && pathname==='/api/qr'){
       const target=String(u.searchParams.get('text')||'').trim();
       if(!target || target.length>2000) return json(res,400,{error:'Некорректная ссылка для QR-кода'});
@@ -324,6 +341,14 @@ const server=http.createServer(async(req,res)=>{
         answer=answer.map(Number);
         const expected=q.tokens.map((_,i)=>i);
         correct=answer.length===expected.length && answer.every((v,i)=>Number.isInteger(v)&&v===expected[i]);
+      }else if(q.type==='splitmul'){
+        if(!answer || typeof answer!=='object' || Array.isArray(answer)) return json(res,400,{error:'Заполните все три окна ответа',invalid:true});
+        const part1=numberValue(String(answer.part1??''));
+        const part2=numberValue(String(answer.part2??''));
+        const result=numberValue(String(answer.result??''));
+        if(part1===null||part2===null||result===null) return json(res,400,{error:'Заполните все три окна числами',invalid:true});
+        answer={part1,part2,result};
+        correct=Math.abs(part1-q.correctParts[0])<1e-12 && Math.abs(part2-q.correctParts[1])<1e-12 && Math.abs(result-q.correctParts[2])<1e-12;
       }else{
         answer=numberValue(String(answer??''));
         if(answer===null)return json(res,400,{error:'Введите целое число или конечную десятичную дробь',invalid:true});
