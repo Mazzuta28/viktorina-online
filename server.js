@@ -11,7 +11,7 @@ const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(ROOT, 'data');
 const QUIZZES_FILE = path.join(DATA_DIR, 'quizzes.json');
-const AVATARS = ['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖'];
+const AVATARS = ['🦊','🐼','🐯','🐸','🐵','🐰','🐨','🦁','🐧','🐙','🦄','🤖','🐶','🐱','🐭','🐹','🐻','🐮','🐷','🐔','🦉','🐝','🐢','🐬'];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(QUIZZES_FILE)) fs.writeFileSync(QUIZZES_FILE, '[]', 'utf8');
@@ -49,6 +49,17 @@ function readQuizzes(){ try{return JSON.parse(fs.readFileSync(QUIZZES_FILE,'utf8
 function writeQuizzes(q){ fs.writeFileSync(QUIZZES_FILE,JSON.stringify(q,null,2),'utf8'); }
 function id(prefix=''){ return prefix + crypto.randomBytes(8).toString('hex'); }
 function shuffle(a){ a=[...a]; for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+function cleanAvatarReservations(room){
+  const now=Date.now();
+  if(!room.avatarReservations) room.avatarReservations=new Map();
+  for(const [avatar,r] of room.avatarReservations) if(!r || r.expiresAt<=now) room.avatarReservations.delete(avatar);
+}
+function unavailableAvatars(room,ownToken=''){
+  cleanAvatarReservations(room);
+  const used=new Set([...room.participants.values()].map(p=>p.avatar));
+  for(const [avatar,r] of room.avatarReservations) if(!ownToken || r.token!==ownToken) used.add(avatar);
+  return [...used];
+}
 function numberValue(value){
   if(typeof value==='number' && Number.isFinite(value)) return value;
   if(typeof value!=='string') return null;
@@ -109,6 +120,11 @@ function makeStudentQuestions(room,p){
     return {id:q.id,number:pos+1,type:'number',text:q.text,imageData:q.imageData||''};
   });
 }
+function participantElapsedMs(room,p){
+  if(!p.startedAt) return 0;
+  const end=p.finishedAt || room.closedAt || Date.now();
+  return Math.max(0,end-p.startedAt);
+}
 function leaderboard(room){
   const total=room.quiz.questions.length;
   const items=[...room.participants.values()].map(p=>({
@@ -120,9 +136,12 @@ function leaderboard(room){
     correct:p.answers.filter(a=>a.correct).length,
     score:p.answers.filter(a=>a.correct).length*1000,
     finished:p.finished,
-    joinedAt:p.joinedAt
+    joinedAt:p.joinedAt,
+    startedAt:p.startedAt||null,
+    finishedAt:p.finishedAt||null,
+    elapsedMs:participantElapsedMs(room,p)
   }));
-  if(room.status==='active'){
+  if(room.status==='active' || room.status==='closed'){
     items.sort((a,b)=>b.correct-a.correct || a.joinedAt-b.joinedAt || a.name.localeCompare(b.name,'ru'));
     const levels=[...new Set(items.filter(x=>x.correct>0).map(x=>x.correct))].sort((a,b)=>b-a);
     return items.map(p=>({
@@ -143,6 +162,7 @@ function roomState(room){
     totalQuestions:room.quiz.questions.length,
     participantCount:room.participants.size,
     ratingVisible:room.ratingVisible!==false,
+    namesVisible:room.namesVisible!==false,
     participants:leaderboard(room),
     reportReady,
     report:reportReady?makeReport(room):null
@@ -185,28 +205,36 @@ function makeReport(room){
     .map(p=>{
       const correct=p.answers.filter(a=>a.correct).length;
       const wrongAnswers=p.answers.filter(a=>!a.correct);
-      const errors=wrongAnswers.map(a=>{
-        const qi=room.quiz.questions.findIndex(q=>q.id===a.questionId);
-        const q=qi>=0?room.quiz.questions[qi]:null;
-        if(!q) return {questionNumber:null,questionText:'Вопрос не найден',studentAnswer:'—',correctAnswer:'—'};
+      const details=p.order.map((qi,position)=>{
+        const q=room.quiz.questions[qi];
+        const a=p.answers[position]||null;
+        if(!q) return {number:position+1,questionText:'Вопрос не найден',hasImage:false,imageData:'',status:'unanswered',studentAnswer:'—',correctAnswer:'—'};
         return {
-          questionNumber:qi+1,
-          questionText:q.text || (q.imageData?'Задание с изображением':`Вопрос ${qi+1}`),
+          number:position+1,
+          questionText:q.text || (q.imageData?'Задание с изображением':`Задание ${position+1}`),
           hasImage:Boolean(q.imageData),
-          studentAnswer:answerTextForReport(q,a.answer),
+          imageData:q.imageData||'',
+          status:a ? (a.correct?'correct':'wrong') : 'unanswered',
+          correct:a ? Boolean(a.correct) : null,
+          studentAnswer:a ? answerTextForReport(q,a.answer) : '—',
           correctAnswer:correctTextForReport(q)
         };
       });
+      const errors=details.filter(x=>x.status==='wrong').map(x=>({
+        questionNumber:x.number,questionText:x.questionText,hasImage:x.hasImage,
+        studentAnswer:x.studentAnswer,correctAnswer:x.correctAnswer
+      }));
       return {
         id:p.id,name:p.name,avatar:p.avatar,
         answered:p.answers.length,total,
         correct,wrong:wrongAnswers.length,
         unanswered:Math.max(0,total-p.answers.length),
         finished:p.finished,
-        errors
+        durationMs:participantElapsedMs(room,p),
+        details,errors
       };
     });
-  return {quizTitle:room.quiz.title,totalQuestions:total,participantCount:participants.length,participants};
+  return {quizTitle:room.quiz.title,totalQuestions:total,participantCount:participants.length,status:room.status,participants};
 }
 function allParticipantsFinished(room){
   return room.participants.size>0 && [...room.participants.values()].every(p=>p.finished);
@@ -228,7 +256,7 @@ function serveFile(res,file){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const pathname=decodeURIComponent(u.pathname);
   try{
-    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.6',updated:'2026-09-29'});
+    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.8',updated:'2026-09-30'});
     if(req.method==='GET' && pathname==='/api/qr'){
       const target=String(u.searchParams.get('text')||'').trim();
       if(!target || target.length>2000) return json(res,400,{error:'Некорректная ссылка для QR-кода'});
@@ -254,7 +282,8 @@ const server=http.createServer(async(req,res)=>{
         .sort((a,b)=>b.createdAt-a.createdAt);
       const room=candidates[0];
       if(!room) return json(res,404,{error:'Учитель ещё не открыл эту викторину'});
-      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
+      const reservationToken=String(u.searchParams.get('reservationToken')||'');
+      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length,usedAvatars:unavailableAvatars(room,reservationToken)});
     }
 
     // Создание комнаты теперь создаёт ЛОББИ. Викторина начинается только после кнопки «Старт» у учителя.
@@ -267,7 +296,7 @@ const server=http.createServer(async(req,res)=>{
         if(!quiz) return json(res,404,{error:'Викторина не найдена'});
       } catch(e) { return json(res,400,{error:e.message}); }
       const roomId=id('r_'),teacherToken=id('t_');
-      rooms.set(roomId,{id:roomId,teacherToken,quiz,status:'lobby',ratingVisible:true,createdAt:Date.now(),startedAt:null,participants:new Map(),listeners:new Set()});
+      rooms.set(roomId,{id:roomId,teacherToken,quiz,status:'lobby',ratingVisible:true,namesVisible:true,createdAt:Date.now(),startedAt:null,closedAt:null,participants:new Map(),avatarReservations:new Map(),listeners:new Set()});
       return json(res,200,{roomId,teacherToken,quizTitle:quiz.title,quizId:quiz.id,status:'lobby'});
     }
 
@@ -275,7 +304,8 @@ const server=http.createServer(async(req,res)=>{
     if(m && req.method==='GET'){
       const room=rooms.get(m[1]);
       if(!room||room.status==='closed')return json(res,404,{error:'Комната не найдена или уже закрыта'});
-      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length});
+      const reservationToken=String(u.searchParams.get('reservationToken')||'');
+      return json(res,200,{roomId:room.id,quizTitle:room.quiz.title,status:room.status,questionCount:room.quiz.questions.length,usedAvatars:unavailableAvatars(room,reservationToken)});
     }
 
     m=pathname.match(/^\/api\/rooms\/([^/]+)\/events$/);
@@ -286,6 +316,25 @@ const server=http.createServer(async(req,res)=>{
       room.listeners.add(res);req.on('close',()=>room.listeners.delete(res));return;
     }
 
+    // Резервирование персонажа происходит уже при нажатии на иконку на стартовой странице.
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/avatar-reserve$/);
+    if(m && req.method==='POST'){
+      const room=rooms.get(m[1]);
+      if(!room||room.status==='closed')return json(res,404,{error:'Комната не найдена или уже закрыта'});
+      const body=await readBody(req);
+      const avatar=String(body.avatar||'');
+      if(!AVATARS.includes(avatar))return json(res,400,{error:'Выберите персонажа'});
+      cleanAvatarReservations(room);
+      let token=String(body.reservationToken||'').trim();
+      if(!token) token=id('a_');
+      for(const [a,r] of room.avatarReservations) if(r?.token===token && a!==avatar) room.avatarReservations.delete(a);
+      const occupied=[...room.participants.values()].some(p=>p.avatar===avatar);
+      const existing=room.avatarReservations.get(avatar);
+      if(occupied || (existing && existing.token!==token)) return json(res,409,{error:'Этот персонаж уже выбран другим учеником.',avatarTaken:true,usedAvatars:unavailableAvatars(room,token)});
+      room.avatarReservations.set(avatar,{token,expiresAt:Date.now()+5*60*1000});
+      return json(res,200,{ok:true,reservationToken:token,avatar,usedAvatars:unavailableAvatars(room,token)});
+    }
+
     // Подключаться можно и в лобби, и после старта — до тех пор, пока учитель не завершит игру.
     m=pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
     if(m && req.method==='POST'){
@@ -293,12 +342,22 @@ const server=http.createServer(async(req,res)=>{
       if(!room||room.status==='closed')return json(res,404,{error:'Комната не найдена или уже закрыта'});
       const body=await readBody(req);
       const name=String(body.name||'').trim().slice(0,40);if(!name)return json(res,400,{error:'Введите имя'});
-      const avatar=AVATARS.includes(body.avatar)?body.avatar:AVATARS[0];
+      const avatar=AVATARS.includes(body.avatar)?body.avatar:'';
+      if(!avatar)return json(res,400,{error:'Выберите персонажа'});
+      cleanAvatarReservations(room);
+      const reservationToken=String(body.reservationToken||'').trim();
+      const usedAvatars=[...room.participants.values()].map(p=>p.avatar);
+      if(usedAvatars.includes(avatar)) return json(res,409,{error:'Этот персонаж уже выбран другим учеником. Выберите свободного персонажа.',avatarTaken:true,usedAvatars:unavailableAvatars(room,reservationToken)});
+      const reservation=room.avatarReservations.get(avatar);
+      if(reservation && reservation.token!==reservationToken) return json(res,409,{error:'Этот персонаж уже выбран другим учеником. Выберите свободного персонажа.',avatarTaken:true,usedAvatars:unavailableAvatars(room,reservationToken)});
+      if(reservation && reservation.token===reservationToken) room.avatarReservations.delete(avatar);
+      for(const [a,r] of room.avatarReservations) if(r?.token===reservationToken) room.avatarReservations.delete(a);
       const now=Date.now();
       const p={
         id:id('p_'),name,avatar,joinedAt:now,
         order:shuffle(room.quiz.questions.map((_,i)=>i)),optionOrders:{},answers:[],current:0,
         finished:false,score:0,totalResponseMs:0,
+        startedAt:room.status==='active'?now:null,finishedAt:null,
         questionStartedAt:room.status==='active'?now:null
       };
       room.quiz.questions.forEach((q,i)=>{if(q.type==='choice')p.optionOrders[i]=shuffle(q.options.map((_,j)=>j)); else if(q.type==='sentence')p.optionOrders[i]=shuffle(q.tokens.map((_,j)=>j));});
@@ -307,7 +366,7 @@ const server=http.createServer(async(req,res)=>{
       const place=rankFor(room,p.id);
       return json(res,200,{
         participantId:p.id,quizTitle:room.quiz.title,questions:makeStudentQuestions(room,p),
-        roomStatus:room.status,rank:place.rank,totalPlayers:room.participants.size,avatar:p.avatar,ratingVisible:room.ratingVisible!==false
+        roomStatus:room.status,rank:place.rank,totalPlayers:room.participants.size,avatar:p.avatar,ratingVisible:room.ratingVisible!==false,usedAvatars:unavailableAvatars(room,'')
       });
     }
 
@@ -319,7 +378,7 @@ const server=http.createServer(async(req,res)=>{
       if(room.status==='closed')return json(res,410,{error:'Викторина уже завершена'});
       if(room.status==='active')return json(res,200,{ok:true,status:'active'});
       room.status='active';room.startedAt=Date.now();
-      for(const p of room.participants.values()) if(!p.finished) p.questionStartedAt=room.startedAt;
+      for(const p of room.participants.values()) if(!p.finished){ p.startedAt=room.startedAt; p.questionStartedAt=room.startedAt; }
       broadcast(room);
       return json(res,200,{ok:true,status:'active'});
     }
@@ -361,7 +420,7 @@ const server=http.createServer(async(req,res)=>{
       p.totalResponseMs=(p.totalResponseMs||0)+responseMs;
       p.answers.push({questionId:q.id,answer,correct,points:pointsEarned,responseMs,at:answeredAt});
       p.current++;
-      if(p.current>=p.order.length)p.finished=true; else p.questionStartedAt=answeredAt;
+      if(p.current>=p.order.length){p.finished=true;p.finishedAt=answeredAt;} else p.questionStartedAt=answeredAt;
       const place=rankFor(room,p.id);
       broadcast(room);
       return json(res,200,{correct,finished:p.finished,answered:p.answers.length,total:p.order.length,correctCount:p.answers.filter(a=>a.correct).length,pointsEarned,score:p.score,rank:place.rank,totalPlayers:place.totalPlayers,ratingVisible:room.ratingVisible!==false});
@@ -378,7 +437,7 @@ const server=http.createServer(async(req,res)=>{
           status:room.status,rank:place.rank,totalPlayers:place.totalPlayers,score:p.answers.filter(a=>a.correct).length*1000,
           ratingVisible:room.ratingVisible!==false,
           correct:p.answers.filter(a=>a.correct).length,answered:p.answers.length,total:room.quiz.questions.length,
-          finished:p.finished,avatar:p.avatar,name:p.name
+          finished:p.finished,avatar:p.avatar,name:p.name,elapsedMs:participantElapsedMs(room,p)
         });
       }
       return json(res,200,{status:room.status,participantCount:room.participants.size});
@@ -393,15 +452,31 @@ const server=http.createServer(async(req,res)=>{
       return json(res,200,{ok:true,ratingVisible:room.ratingVisible});
     }
 
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/names-visibility$/);
+    if(m && req.method==='POST'){
+      const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
+      const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
+      room.namesVisible=Boolean(body.visible);
+      broadcast(room);
+      return json(res,200,{ok:true,namesVisible:room.namesVisible});
+    }
+
+    m=pathname.match(/^\/api\/rooms\/([^/]+)\/report$/);
+    if(m && req.method==='GET'){
+      const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
+      if(u.searchParams.get('token')!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
+      return json(res,200,{report:makeReport(room)});
+    }
+
     m=pathname.match(/^\/api\/rooms\/([^/]+)\/close$/);
     if(m && req.method==='POST'){
       const room=rooms.get(m[1]);if(!room)return json(res,404,{error:'Комната не найдена'});
       const body=await readBody(req);if(body.teacherToken!==room.teacherToken)return json(res,403,{error:'Нет доступа'});
-      room.status='closed';
+      room.status='closed';room.closedAt=Date.now();
       const report=makeReport(room);
       broadcast(room);
       setTimeout(()=>closeSse(room),1500);
-      setTimeout(()=>rooms.delete(room.id),30*60*1000);
+      setTimeout(()=>rooms.delete(room.id),12*60*60*1000);
       return json(res,200,{ok:true,report});
     }
 
@@ -409,6 +484,7 @@ const server=http.createServer(async(req,res)=>{
       if(pathname==='/') return serveFile(res,path.join(PUBLIC_DIR,'index.html'));
       if(pathname==='/teacher') return serveFile(res,path.join(PUBLIC_DIR,'teacher.html'));
       if(pathname==='/student') return serveFile(res,path.join(PUBLIC_DIR,'student.html'));
+      if(pathname==='/overview') return serveFile(res,path.join(PUBLIC_DIR,'overview.html'));
       const safe=path.normalize(pathname).replace(/^([.][.][/\\])+/, ''); return serveFile(res,path.join(PUBLIC_DIR,safe));
     }
     return json(res,404,{error:'Не найдено'});
