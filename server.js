@@ -256,7 +256,7 @@ function serveFile(res,file){
 const server=http.createServer(async(req,res)=>{
   const u=new URL(req.url,`http://${req.headers.host||'localhost'}`); const pathname=decodeURIComponent(u.pathname);
   try{
-    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.8',updated:'2026-09-30'});
+    if(req.method==='GET' && pathname==='/api/version') return json(res,200,{version:'3.8',updated:'2026-10-01'});
     if(req.method==='GET' && pathname==='/api/qr'){
       const target=String(u.searchParams.get('text')||'').trim();
       if(!target || target.length>2000) return json(res,400,{error:'Некорректная ссылка для QR-кода'});
